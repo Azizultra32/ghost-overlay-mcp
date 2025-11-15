@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+START_SCRIPT="$ROOT_DIR/scripts/start-mcp.sh"
+STOP_SCRIPT="$ROOT_DIR/scripts/stop-mcp.sh"
+PORT="${MCP_DEBUG_PORT:-9222}"
+PROFILE_DIR="${MCP_PROFILE_DIR:-/tmp/chrome-mcp}"
+BROWSER_LOG="${MCP_BROWSER_LOG:-/tmp/chrome-mcp-browser.log}"
+CODENAME_PATTERN="codex app-server"
+
+usage() {
+  cat <<USAGE
+word (start|stop|status|reset|codex-clean|ready)
+  start        Kill stale Codex (configurable) + launch Chrome
+  stop         Stop Chrome profile + stray helpers
+  status       Show DevTools endpoint + Codex processes
+  reset        stop -> codex-clean -> start
+  ready        reset -> status (one command to get going)
+  codex-clean  kill stale "${CODENAME_PATTERN}" processes
+USAGE
+}
+
+require_scripts() {
+  if [ ! -x "$START_SCRIPT" ] || [ ! -x "$STOP_SCRIPT" ]; then
+    echo "Missing scripts/start-mcp.sh or scripts/stop-mcp.sh" >&2
+    exit 1
+  fi
+}
+
+do_start() {
+  require_scripts
+  if [ "${WORD_AUTO_CODEX_CLEAN:-1}" = "1" ]; then
+    do_codex_clean || true
+  fi
+  "$START_SCRIPT"
+}
+
+do_stop() {
+  require_scripts
+  "$STOP_SCRIPT"
+}
+
+do_status() {
+  echo "== Chrome DevTools endpoint =="
+  if curl -fs "http://localhost:${PORT}/json/version" >/dev/null 2>&1; then
+    echo "OK: http://localhost:${PORT}/json/version"
+  else
+    echo "UNREACHABLE on port ${PORT}"
+  fi
+  echo
+  echo "== Codex processes =="
+  pgrep -fl "$CODENAME_PATTERN" 2>/dev/null || echo "(none)"
+  echo
+  echo "Logs:"
+  echo "  Browser -> $BROWSER_LOG"
+  echo "  (MCP server is spawned by each client via stdio)"
+}
+
+do_codex_clean() {
+  echo "Stopping stray Codex app-server processes..."
+  pkill -f "$CODENAME_PATTERN" 2>/dev/null && echo "Killed" || echo "None running"
+}
+
+do_reset() {
+  do_stop || true
+  do_codex_clean || true
+  WORD_AUTO_CODEX_CLEAN=0 "$START_SCRIPT"
+}
+
+do_ready() {
+  do_reset
+  do_status
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  start|go|on)
+    do_start
+    ;;
+  stop|off)
+    do_stop
+    ;;
+  status)
+    do_status
+    ;;
+  reset|restart)
+    do_reset
+    ;;
+  ready|prep)
+    do_ready
+    ;;
+  codex-clean|codex|clean)
+    do_codex_clean
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

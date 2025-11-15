@@ -1,0 +1,18 @@
+{
+  "name": "ghost",
+  "version": "1.0.0",
+  "description": "Quick commands via the `word` helper:",
+  "main": "background.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chrome-remote-interface": "^0.33.3"
+  }
+}

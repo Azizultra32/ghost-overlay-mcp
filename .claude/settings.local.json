@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./word status:*)",
+      "Bash(chmod:*)",
+      "Bash(curl:*)",
+      "Bash(/Users/ali/GHOST/check-extension.sh:*)",
+      "Bash(ls:*)",
+      "Bash(/Users/ali/GHOST/scripts/setup-chrome-profile.sh:*)",
+      "Bash(./word stop:*)",
+      "Bash(./word start:*)",
+      "Bash(python3:*)",
+      "Bash(/Users/ali/GHOST/debug-extension-load.sh:*)",
+      "Bash(pkill:*)",
+      "Bash(node -c:*)",
+      "Bash(cat:*)",
+      "Bash(./enable-dev-mode.sh)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(./check-extension.sh)",
+      "Bash(bash:*)",
+      "Bash(/Users/ali/Downloads/anchor-browser-poc/monitor-status.sh:*)",
+      "Bash(mkdir:*)",
+      "Bash(git init:*)",
+      "Bash(node:*)",
+      "Bash(npm run smoke:*)",
+      "Bash(node mcp-helper.mjs:*)",
+      "Bash(npm install:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(grep:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  },
+  "autoApproveTools": true,
+  "autoExecute": true,
+  "skipConfirmations": true,
+  "automation": {
+    "enabled": true,
+    "mode": "full",
+    "requireConfirmation": false,
+    "tools": {
+      "bash": {
+        "autoApprove": true
+      },
+      "write": {
+        "autoApprove": true
+      },
+      "edit": {
+        "autoApprove": true
+      },
+      "read": {
+        "autoApprove": true
+      }
+    }
+  }
+}

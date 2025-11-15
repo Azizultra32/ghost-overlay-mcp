@@ -1,0 +1,5 @@
+node_modules/
+.chrome_mcp_browser.pid
+*.log
+.DS_Store
+extensions-page*.png
