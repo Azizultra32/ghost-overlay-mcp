@@ -21,6 +21,68 @@ document.documentElement.appendChild(root);
 
 let state = null; // {el, text, box, badge, txt}
 
+function cssEscape(value) {
+  if (window.CSS && CSS.escape) return CSS.escape(value)
+  return String(value).replace(/[^a-zA-Z0-9_\-]/g, '\\$&')
+}
+
+function buildSimpleSelector(el) {
+  if (el.id) return '#' + cssEscape(el.id)
+  const parts = []
+  let node = el
+  while (node && node.nodeType === 1 && parts.length < 5) {
+    let part = node.tagName.toLowerCase()
+    const parent = node.parentElement
+    if (parent) {
+      const siblings = [...parent.children].filter(child => child.tagName === node.tagName)
+      if (siblings.length > 1) {
+        part += `:nth-of-type(${siblings.indexOf(node) + 1})`
+      }
+    }
+    parts.unshift(part)
+    node = parent
+  }
+  return parts.join(' > ')
+}
+
+function labelForElement(el) {
+  if (!el) return ''
+  const aria = el.getAttribute('aria-label')
+  if (aria) return aria
+  const placeholder = el.getAttribute('placeholder')
+  if (placeholder) return placeholder
+  if (el.id) {
+    const match = document.querySelector(`label[for="${cssEscape(el.id)}"]`)
+    if (match) return match.textContent?.trim() || ''
+  }
+  const closestLabel = el.closest('label')
+  if (closestLabel) return closestLabel.textContent?.trim() || ''
+  const nameAttr = el.getAttribute('name')
+  if (nameAttr) return nameAttr
+  return el.tagName.toLowerCase()
+}
+
+function roleForElement(el) {
+  if (!el) return 'textbox'
+  if (el.getAttribute('role')) return el.getAttribute('role')
+  const tag = el.tagName.toLowerCase()
+  if (tag === 'textarea') return 'textarea'
+  if (tag === 'select') return 'combobox'
+  if (tag === 'input') return el.getAttribute('type') || 'textbox'
+  if (el.isContentEditable) return 'textbox'
+  return tag
+}
+
+function snapshotFields() {
+  return findCandidates().map(c => ({
+    selector: buildSimpleSelector(c.el),
+    label: labelForElement(c.el) || c.label || 'field',
+    role: roleForElement(c.el),
+    editable: isEditable(c.el),
+    visible: isVisible(c.el)
+  }))
+}
+
 // Load note content from storage on initialization
 async function loadNoteContent() {
   try {
@@ -237,80 +299,55 @@ window.addEventListener('keydown', (e) => {
 // Initialize content loading
 loadNoteContent();
 
-// ============================================================================
-// MCP BRIDGE - Expose functions for MCP server to call via CDP
-// ============================================================================
-// This works around Chrome MV3 isolated worlds by exposing functions via
-// custom events that can be triggered from the page context
-
-// Expose mapDom function to page context via custom event
-window.addEventListener('__ANCHOR_MCP_MAP_REQUEST__', () => {
-  const cands = findCandidates();
-  const fields = cands.map(c => ({
-    selector: getUniqueSelector(c.el),
-    label: c.label || '(unlabeled)',
-    role: getRoleFor(c.el),
-    editable: isEditable(c.el),
-    visible: true
-  }));
-
-  // Dispatch response event with field data
-  window.dispatchEvent(new CustomEvent('__ANCHOR_MCP_MAP_RESPONSE__', {
-    detail: { fields, url: window.location.href }
-  }));
-});
-
-// Expose fill function to page context via custom event
-window.addEventListener('__ANCHOR_MCP_FILL_REQUEST__', (e) => {
-  const { selector, value } = e.detail;
-  const el = document.querySelector(selector);
-  if (el && isEditable(el)) {
-    const previousValue = readValue(el);
-    undoStack.push({ element: el, previousValue, timestamp: Date.now() });
-    if (undoStack.length > 10) undoStack.shift();
-
-    const success = tryPaste(el, value);
-    window.dispatchEvent(new CustomEvent('__ANCHOR_MCP_FILL_RESPONSE__', {
-      detail: { success, selector }
-    }));
-  } else {
-    window.dispatchEvent(new CustomEvent('__ANCHOR_MCP_FILL_RESPONSE__', {
-      detail: { success: false, selector, error: 'Element not found or not editable' }
-    }));
+function writeValue(el, text) {
+  if (el.matches('textarea,input')) {
+    el.focus()
+    el.value = text
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  } else if (el.isContentEditable) {
+    el.focus()
+    el.innerText = text
+    el.dispatchEvent(new Event('input', { bubbles: true }))
   }
-});
+}
 
-// Helper to get unique selector (improved version)
-function getUniqueSelector(el) {
-  if (el.id) return '#' + CSS.escape(el.id);
-  if (el.name) return `[name="${CSS.escape(el.name)}"]`;
-
-  const parts = [];
-  let node = el;
-  while (node && node.nodeType === 1 && parts.length < 5) {
-    let selector = node.nodeName.toLowerCase();
-    const parent = node.parentElement;
-    if (parent) {
-      const siblings = Array.from(parent.children).filter(child => child.nodeName === node.nodeName);
-      if (siblings.length > 1) {
-        selector += `:nth-of-type(${siblings.indexOf(node) + 1})`;
-      }
+function initMcpBridge() {
+  window.addEventListener('__ANCHOR_MCP_MAP_REQUEST__', () => {
+    try {
+      const detail = { url: location.href, fields: snapshotFields() }
+      window.dispatchEvent(new CustomEvent('__ANCHOR_MCP_MAP_RESPONSE__', { detail }))
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('__ANCHOR_MCP_MAP_RESPONSE__', { detail: { error: error?.message || String(error) } }))
     }
-    parts.unshift(selector);
-    node = parent;
-  }
-  return parts.join(' > ');
+  })
+
+  window.addEventListener('__ANCHOR_MCP_FILL_REQUEST__', (event) => {
+    const { selector, value } = event?.detail || {}
+    let success = false
+    let error = null
+    try {
+      if (typeof selector === 'string') {
+        const el = document.querySelector(selector)
+        if (el && isEditable(el)) {
+          success = tryPaste(el, value ?? '')
+          if (!success) {
+            writeValue(el, value ?? '')
+            success = true
+          }
+        } else {
+          error = 'Field not found or not editable'
+        }
+      } else {
+        error = 'Invalid selector'
+      }
+    } catch (err) {
+      error = err?.message || String(err)
+    }
+    window.dispatchEvent(new CustomEvent('__ANCHOR_MCP_FILL_RESPONSE__', { detail: { success, selector, error } }))
+  })
+
+  console.log('AssistMD: MCP bridge initialized')
 }
 
-// Helper to get role
-function getRoleFor(el) {
-  if (el.getAttribute('role')) return el.getAttribute('role');
-  const tag = el.tagName.toLowerCase();
-  if (tag === 'textarea') return 'textarea';
-  if (tag === 'select') return 'combobox';
-  if (tag === 'input') return el.getAttribute('type') || 'textbox';
-  if (el.isContentEditable) return 'textbox';
-  return tag;
-}
-
-console.log('AssistMD: MCP bridge initialized');
+initMcpBridge()
