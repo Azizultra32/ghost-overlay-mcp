@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Git hook: post-checkout
+# Automatically strip quarantine attributes after git checkout/clone
+
+xattr -rc . 2>/dev/null || true
+echo "✅ Stripped quarantine attributes from repository"

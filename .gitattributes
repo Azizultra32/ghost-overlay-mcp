@@ -1,0 +1,15 @@
+# Prevent macOS quarantine attributes on extension files
+extension/** -text
+
+# Ensure shell scripts are executable
+*.sh text eol=lf
+scripts/*.sh text eol=lf
+
+# Ensure consistent line endings
+*.js text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.css text eol=lf
