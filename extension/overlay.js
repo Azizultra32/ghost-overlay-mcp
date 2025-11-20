@@ -4,6 +4,13 @@ const TOGGLE_BUTTON_ID = '__anchor_ghost_toggle__';
 const OVERLAY_HOST_ID = '__anchor_ghost_overlay__';
 const MAX_FIELDS_VISIBLE = 8;
 
+function withTimeout(promise, ms = 1500) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+  ])
+}
+
 let shadowRoot = null;
 let status = { mode: 'clinician', mappedCount: 0, lastAction: 'Idle', activeTab: 'fields' };
 
@@ -729,14 +736,14 @@ function attachApi() {
               ...mapResult
           };
           console.log('Sending to Agent:', JSON.stringify(payload));
-          await fetch('http://localhost:8787/dom', {
+          await withTimeout(fetch('http://localhost:8787/dom', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
-          });
+          }), 1500);
           log('Sent map to Agent', 'info');
       } catch (e) {
-        log('Agent offline (using local mode)', 'warning');
+        log(`Agent offline (using local mode): ${e?.message || e}`, 'warning');
       }
 
       return { fields: lastMapped };
@@ -747,22 +754,23 @@ function attachApi() {
     },
     fill: async () => {
       try {
-        const res = await fetch('http://localhost:8787/actions/fill', {
+        const res = await withTimeout(fetch('http://localhost:8787/actions/fill', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url: window.location.href,
             fields: lastMapped
           })
-        });
+        }), 2000);
 
         if (!res.ok) throw new Error(`Agent error: ${res.status}`);
 
         const plan = await res.json();
         return { ok: true, plan };
       } catch (e) {
-        log(`Agent fill failed: ${e.message}`, 'error');
-        return { ok: false, error: e.message };
+        const message = e?.message || 'Unknown error';
+        log(`Agent fill failed: ${message}`, 'error');
+        return { ok: false, error: message };
       }
     },
     executePlan: async (plan) => {

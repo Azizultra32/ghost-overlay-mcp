@@ -195,6 +195,15 @@ app.get('/', (_req: Request, res: Response) => {
   })
 })
 
+app.get('/health', async (_req: Request, res: Response) => {
+  const llm = await checkLLMHealth()
+  res.json({
+    ok: true,
+    llm,
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini'
+  })
+})
+
 app.get('/dom', (_req: Request, res: Response) => {
   if (!latestDomMap) {
     res.status(404).json({ ok: false, error: 'No DOM map recorded yet' })

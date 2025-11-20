@@ -25,8 +25,7 @@ async function verifyExtension() {
         }
 
         if (!extPage) {
-            console.error('❌ Could not open chrome://extensions');
-            process.exit(1);
+            throw new Error('Could not open chrome://extensions');
         }
 
         const { sessionId } = await Target.attachToTarget({ targetId: extPage.targetId, flatten: true });
@@ -55,25 +54,37 @@ async function verifyExtension() {
         const ghostExt = extensions.find(e => e.name === EXPECTED_NAME);
 
         if (!ghostExt) {
-            console.error(`❌ Extension "${EXPECTED_NAME}" NOT FOUND`);
-            console.error('Loaded extensions:', extensions.map(e => e.name).join(', ') || '(none)');
-            process.exit(1);
+            const loaded = extensions.map(e => e.name).join(', ') || '(none)';
+            throw new Error(`Extension "${EXPECTED_NAME}" NOT FOUND. Loaded extensions: ${loaded}`);
         }
 
         if (!ghostExt.enabled) {
-            console.error(`❌ Extension "${EXPECTED_NAME}" is DISABLED`);
-            process.exit(1);
+            throw new Error(`Extension "${EXPECTED_NAME}" is DISABLED`);
         }
 
         console.log(`✅ Extension verified: ${ghostExt.name} v${ghostExt.version} (enabled)`);
-        process.exit(0);
 
     } catch (err) {
-        console.error('❌ Verification failed:', err.message);
-        process.exit(1);
+        throw err;
     } finally {
         if (client) await client.close();
     }
 }
 
-verifyExtension();
+const RETRIES = parseInt(process.env.EXT_VERIFY_RETRIES || "5");
+const WAIT_MS = parseInt(process.env.EXT_VERIFY_WAIT_MS || "1000");
+(async () => {
+    for (let attempt = 1; attempt <= RETRIES; attempt++) {
+        try {
+            await verifyExtension();
+            process.exit(0);
+        } catch (err) {
+            console.error(`❌ Verification attempt ${attempt}/${RETRIES} failed:`, err?.message || err);
+            if (attempt < RETRIES) {
+                await new Promise((r) => setTimeout(r, WAIT_MS));
+            } else {
+                process.exit(1);
+            }
+        }
+    }
+})();
