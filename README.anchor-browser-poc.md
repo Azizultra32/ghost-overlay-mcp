@@ -42,3 +42,4 @@ Anchor Browser is an experimental Chrome Manifest V3 extension plus a local agen
 ## Current Status / Phase
 - Ghost Spine (extension + agent + demo) is implemented and passing `npm run smoke`.
 - Toolbar popup controls exist but are still being expanded; document only the behaviors already present in the repo.
+- OSCAR onboarding + doctor-specific autopilot is documented (see `LLM_INTEGRATION_GUIDE.md`), but it is **planned / experimental**; we still need to validate the monitoring → confidence → autopilot loop against real OSCAR workflows before shipping.
