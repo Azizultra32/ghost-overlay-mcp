@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Git hook: post-merge
+# Automatically strip quarantine attributes after git pull/merge
+
+xattr -rc . 2>/dev/null || true
+echo "✅ Stripped quarantine attributes after merge"

@@ -1,151 +1,224 @@
-# macOS Extension Quarantine Issue
+# macOS Quarantine Attributes - Complete Technical Reference
 
-## Problem
+## Problem Overview
 
-macOS Gatekeeper automatically adds `com.apple.provenance` quarantine attributes
-to files created or modified in certain directories. When these attributes are
-present on Chrome extension files, Chrome **silently rejects** the
-`--load-extension` flag, causing the extension to fail to load with no error
-message.
-
-## Symptoms
-
-- `./word ready` completes successfully
-- Chrome launches with DevTools on port 9222
-- `chrome://extensions` shows **no custom extension** (only built-in extensions
-  like "Google Docs Offline")
-- `node scripts/debug-extensions.mjs` returns `[]` or only built-in extensions
-- No errors in `/tmp/chrome-mcp-browser.log`
+macOS Gatekeeper automatically adds **quarantine attributes** to files
+downloaded from the internet or cloned from Git repositories. These attributes
+cause Chrome to **silently reject** the `--load-extension` flag, making unpacked
+extensions fail to load with zero error messages.
 
 ## Root Cause
 
-```bash
-# Check for quarantine attributes
-$ xattr -r extension/
-extension/manifest.json: com.apple.provenance
-extension/content.js: com.apple.provenance
-extension/background.js: com.apple.provenance
-# ... etc
-```
+When you clone a Git repository or download files on macOS, the system adds
+extended attributes:
 
-## Solution
+- `com.apple.quarantine` - Marks file as "untrusted"
+- `com.apple.provenance` - Tracks where the file came from
 
-The `start-mcp.sh` script now implements a **3-layer defense**:
+Chrome's security model treats quarantined files as potentially dangerous and
+refuses to load them as extensions, even with Developer Mode enabled.
 
-### 1. Bundle Directory (Isolation)
+## Symptoms
 
-```bash
-BUNDLE_DIR="$ROOT_DIR/extension/dist-bundle"
-rsync -a --exclude 'dist-bundle' "$EXTENSION_SRC_DIR/" "$BUNDLE_DIR/"
-```
+1. `./word ready` completes successfully
+2. Chrome launches normally
+3. `chrome://extensions` shows **no extension** or only built-in extensions
+4. `node scripts/debug-extensions.mjs` returns `[]`
+5. **No error messages anywhere** - Chrome fails silently
 
-- Creates a clean staging directory separate from source
-- Prevents source file corruption
+## Our Multi-Layer Defense System
 
-### 2. Quarantine Stripping (Fix)
+### Layer 1: Automatic Stripping on Startup
+
+**File:** `scripts/start-mcp.sh` (lines 51-54)
 
 ```bash
+# CRITICAL: Strip macOS quarantine attributes
 "$ROOT_DIR/scripts/fix-extension-quarantine.sh" "$BUNDLE_DIR"
 ```
 
-- Removes all extended attributes from bundle
-- Dedicated script for clarity and reusability
+Every time you run `./word ready`, the startup script:
 
-### 3. Load Verification (Fail-Fast)
+1. Builds the extension bundle
+2. Copies files to `extension/dist-bundle`
+3. **Automatically strips quarantine attributes**
+4. Launches Chrome with the clean bundle
 
-```bash
-node "$ROOT_DIR/scripts/verify-extension-loaded.mjs"
-```
+### Layer 2: Load Verification
 
-- Confirms extension appears in `chrome://extensions`
-- **Exits with error** if extension didn't load
-- Prevents silent failures
-
-## Manual Fix
-
-If you encounter this issue in a different context:
+**File:** `scripts/start-mcp.sh` (lines 103-111)
 
 ```bash
-# Strip quarantine from any directory
-./scripts/fix-extension-quarantine.sh /path/to/extension
-
-# Or manually
-xattr -rc /path/to/extension
+# CRITICAL: Verify the extension actually loaded
+if ! node "$ROOT_DIR/scripts/verify-extension-loaded.mjs"; then
+  echo "❌ FATAL: Extension failed to load!"
+  exit 1
+fi
 ```
 
-## Prevention
+After Chrome starts, we verify the extension loaded successfully. If it didn't,
+the script **exits with an error** instead of silently continuing.
 
-### For New Files
+### Layer 3: Git Hooks (Auto-Fix on Clone/Pull)
 
-The bundle directory approach ensures new files are always clean.
+**Files:** `.githooks/post-checkout`, `.githooks/post-merge`
 
-### For Git Clones
-
-If you clone this repo fresh, macOS may quarantine the entire directory:
+Install once:
 
 ```bash
-# After cloning
-cd /path/to/GHOST
-xattr -rc .
+cp .githooks/post-checkout .git/hooks/post-checkout
+cp .githooks/post-merge .git/hooks/post-merge
+chmod +x .git/hooks/post-*
 ```
 
-### For Downloaded Archives
+Now every time you:
 
-If you download a ZIP of this repo:
+- Clone the repository
+- Switch branches (`git checkout`)
+- Pull changes (`git pull`)
 
-```bash
-# After extracting
-xattr -rc GHOST-main/
-```
+The hooks automatically strip quarantine attributes from the entire repository.
 
-## Verification
+### Layer 4: Manual Fix Script
 
-After running `./word ready`, you should see:
+**File:** `scripts/fix-extension-quarantine.sh`
 
-```
-✅ All quarantine attributes removed
-✅ Extension verified: AssistMD Ghost Overlay (MVP) v0.0.2 (enabled)
-```
-
-If you see:
-
-```
-❌ FATAL: Extension failed to load!
-```
-
-Then the quarantine fix failed. Run manually:
+If you ever need to manually fix quarantine issues:
 
 ```bash
 ./scripts/fix-extension-quarantine.sh extension/dist-bundle
 ```
 
-## Technical Details
+This script:
 
-### Why Chrome Rejects Quarantined Extensions
+1. Recursively removes all extended attributes
+2. Verifies they're gone
+3. Exits with error if any remain
 
-Chrome's extension loader checks file attributes before loading unpacked
-extensions. Files with quarantine attributes are treated as "untrusted" and
-silently rejected for security reasons.
+## Verification Commands
 
-### Why This Only Affects macOS
+### Check for Quarantine Attributes
 
-Linux and Windows don't have an equivalent quarantine system. This issue is
-**macOS-specific**.
+```bash
+# Check entire repository
+xattr -lr . | grep -E "com.apple.(quarantine|provenance)"
 
-### Why rsync Doesn't Strip Attributes
+# Check extension bundle specifically
+xattr -lr extension/dist-bundle | grep -E "com.apple.(quarantine|provenance)"
+```
 
-By default, `rsync -a` preserves extended attributes. We must explicitly strip
-them after copying.
+If this returns **nothing**, you're clean. If it shows attributes, run:
 
-## Related Files
+```bash
+xattr -rc .
+```
 
-- `scripts/start-mcp.sh` - Main startup script with 3-layer defense
-- `scripts/fix-extension-quarantine.sh` - Dedicated quarantine removal tool
-- `scripts/verify-extension-loaded.mjs` - Post-launch verification
-- `TROUBLESHOOTING.md` - User-facing troubleshooting guide
+### Verify Extension Loaded
 
-## History
+```bash
+node scripts/verify-extension-loaded.mjs
+```
 
-This issue was discovered on 2025-11-20 after multiple failed attempts to load
-the extension. The root cause was identified by running `xattr -r extension/`
-and discovering quarantine attributes on all files.
+Should output:
+
+```
+✅ Extension loaded: AssistMD Ghost Overlay (MVP)
+```
+
+### Check Extension in Chrome
+
+```bash
+node scripts/debug-extensions.mjs
+```
+
+Should show:
+
+```json
+[
+  {
+    "name": "AssistMD Ghost Overlay (MVP)",
+    "version": "0.0.2",
+    "enabled": true,
+    ...
+  }
+]
+```
+
+## Why This Happens
+
+1. **Git Clone:** When you `git clone`, macOS marks all files as quarantined
+2. **File Downloads:** Downloaded ZIP files are automatically quarantined
+3. **File Copies:** Sometimes even copying files between directories preserves
+   attributes
+4. **Chrome Security:** Chrome refuses to load quarantined extensions for
+   security
+
+## The Nuclear Option
+
+If all else fails:
+
+```bash
+# Kill Chrome completely
+pkill -9 Chrome
+pkill -9 Chromium
+
+# Strip everything
+xattr -rc .
+
+# Clean profile
+rm -rf /tmp/chrome-mcp
+
+# Restart
+./word ready
+```
+
+## Prevention Checklist
+
+✅ **On First Clone:**
+
+```bash
+git clone <repo>
+cd GHOST
+xattr -rc .  # Strip quarantine immediately
+```
+
+✅ **Install Git Hooks:**
+
+```bash
+cp .githooks/* .git/hooks/
+chmod +x .git/hooks/post-*
+```
+
+✅ **Verify Startup Script:**
+
+```bash
+grep -A 2 "fix-extension-quarantine" scripts/start-mcp.sh
+# Should show the quarantine fix is enabled
+```
+
+✅ **Test Extension Loading:**
+
+```bash
+./word ready
+# Should end with: ✅ Extension loaded: AssistMD Ghost Overlay (MVP)
+```
+
+## References
+
+- [Apple Technical Note TN2206](https://developer.apple.com/library/archive/technotes/tn2206/_index.html) -
+  Quarantine attributes
+- [Chrome Extension Security](https://developer.chrome.com/docs/extensions/mv3/security/) -
+  Why Chrome blocks quarantined files
+- Our implementation: `scripts/fix-extension-quarantine.sh`
+
+## Summary
+
+This issue is **completely automated away** in this project. You should never
+encounter it if:
+
+1. You run `./word ready` (not manual Chrome launches)
+2. The startup script completes without errors
+3. You see the verification message: `✅ Extension loaded`
+
+If you do encounter it, the startup script will **fail loudly** with clear
+instructions instead of silently continuing with a broken setup.

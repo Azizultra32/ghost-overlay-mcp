@@ -10,7 +10,7 @@ mkdir -p "$LOG_DIR"
 {
   echo "===== $(date) ====="
   echo "Launching AssistMD Chrome (auto-start)"
-  WORD_AUTO_CODEX_CLEAN=0 "$REPO_DIR/word" start
+  "$REPO_DIR/word" start
   "$REPO_DIR/word" status
   echo
 } >> "$LOG_FILE" 2>&1
