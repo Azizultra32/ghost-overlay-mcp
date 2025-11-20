@@ -23,12 +23,7 @@ mkdir -p /tmp/chrome-mcp
 echo "3. Cleaning PID files..."
 rm -f /Users/ali/GHOST/.chrome_mcp_*.pid
 
-# Kill any lingering Codex processes (optional)
-echo "4. Checking for stray Codex processes..."
-CODEX_COUNT=$(pgrep -f 'codex app-server' | wc -l || echo "0")
-if [ "$CODEX_COUNT" -gt 1 ]; then
-  echo "   Found $CODEX_COUNT Codex processes, cleaning..."
-  pkill -f 'codex app-server' || true
+
 fi
 
 echo ""
@@ -46,5 +41,4 @@ sleep 3
 echo ""
 echo "=== DONE ==="
 echo ""
-echo "If extension still not loaded, run this in Codex CLI:"
-echo "  cat /Users/ali/GHOST/CODEX_COMMAND.txt"
+

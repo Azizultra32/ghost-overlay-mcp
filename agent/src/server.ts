@@ -81,16 +81,29 @@ function extractContextData(context: string): Record<string, string> {
   return data
 }
 
-function buildDemoPlan(
+async function buildDemoPlan(
   url: string,
   fields: FieldDescriptor[],
   note: string | undefined,
   mode: string | undefined,
   context: string | undefined
-): FillPlan {
+): Promise<FillPlan> {
   const editable = fields.filter((f) => f.editable)
   const noteTarget = pickNoteTarget(editable)
   const contextData = context ? extractContextData(context) : {}
+
+  // Generate AI note if context available and no note provided
+  let aiGeneratedNote: string | undefined
+  if (!note && context && process.env.ENABLE_LLM === 'true') {
+    try {
+      aiGeneratedNote = await generateSOAPNote(context)
+      console.log('✅ Generated AI SOAP note:', aiGeneratedNote.substring(0, 100) + '...')
+    } catch (error) {
+      console.warn('⚠️ LLM note generation failed, using demo mode')
+    }
+  }
+
+  const finalNote = note || aiGeneratedNote
 
   const steps: FillStep[] = []
 
@@ -113,12 +126,12 @@ function buildDemoPlan(
 
     // 3. Set Value
     const isNote =
-      noteTarget && field.selector === noteTarget.selector && note !== undefined
+      noteTarget && field.selector === noteTarget.selector && finalNote !== undefined
     
     let value = `DEMO_${slug(field.label || field.selector)}`
     
     if (isNote) {
-        value = note!
+        value = finalNote!
     } else {
         // Smart Fill Logic
         const label = (field.label || '').toLowerCase()
@@ -207,7 +220,7 @@ app.post('/dom', (req: Request, res: Response) => {
   }
 })
 
-app.post('/actions/plan', (req: Request, res: Response) => {
+app.post('/actions/plan', async (req: Request, res: Response) => {
   try {
     const body = req.body || {}
     const url: string | undefined = body.url || latestDomMap?.url
@@ -238,7 +251,7 @@ app.post('/actions/plan', (req: Request, res: Response) => {
       return
     }
 
-    const plan = buildDemoPlan(url, fields, note, mode, latestDomMap?.context)
+    const plan = await buildDemoPlan(url, fields, note, mode, latestDomMap?.context)
     res.json(plan)
   } catch (err: any) {
     res.status(500).json({
@@ -248,7 +261,7 @@ app.post('/actions/plan', (req: Request, res: Response) => {
   }
 })
 
-app.post('/actions/fill', (req: Request, res: Response) => {
+app.post('/actions/fill', async (req: Request, res: Response) => {
   try {
     const body = req.body || {}
     const url = body.url || latestDomMap?.url
@@ -262,7 +275,7 @@ app.post('/actions/fill', (req: Request, res: Response) => {
       })
       return
     }
-    const plan = buildDemoPlan(url, fields, body.note, body.mode, latestDomMap?.context)
+    const plan = await buildDemoPlan(url, fields, body.note, body.mode, latestDomMap?.context)
     res.json(plan)
   } catch (err: any) {
     res.status(500).json({

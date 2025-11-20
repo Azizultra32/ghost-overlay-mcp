@@ -7,12 +7,16 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:extension": "node scripts/build-extension.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "chrome-remote-interface": "^0.33.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0"
   }
 }

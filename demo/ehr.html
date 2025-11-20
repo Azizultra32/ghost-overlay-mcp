@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Demo EHR Form</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    .row { margin-bottom: 12px; }
+    label { display:block; margin-bottom: 4px; }
+    input, textarea, select { padding: 8px; width: 360px; }
+  </style>
+</head>
+<body>
+  <h1>Demo EHR Intake</h1>
+  
+  <div id="patient-context" style="background: #f0f9ff; padding: 16px; border-radius: 8px; margin-bottom: 24px; border: 1px solid #bae6fd;">
+    <h3 style="margin-top:0;">Patient Summary</h3>
+    <p><strong>Name:</strong> Sarah Connor</p>
+    <p><strong>DOB:</strong> 1984-05-12</p>
+    <p><strong>Reason for Visit:</strong> Reports persistent headaches and dizziness since yesterday.</p>
+  </div>
+  <div class="row">
+    <label for="pt_name">Patient Name</label>
+    <input id="pt_name" placeholder="Full name">
+  </div>
+  <div class="row">
+    <label for="dob">Date of Birth</label>
+    <input id="dob" placeholder="YYYY-MM-DD">
+  </div>
+  <div class="row">
+    <label for="cc">Chief Complaint</label>
+    <textarea id="cc" rows="3" placeholder="Free text"></textarea>
+  </div>
+  <div class="row">
+    <label>Sex</label>
+    <select id="sex">
+      <option value="">--</option>
+      <option>Female</option>
+      <option>Male</option>
+      <option>Other</option>
+    </select>
+  </div>
+  <div class="row">
+    <label for="mrn">MRN (read-only)</label>
+    <input id="mrn" value="123456" readonly>
+  </div>
+  <p>Open the overlay with <b>Ctrl+Alt+G</b>.</p>
+</body>
+</html>

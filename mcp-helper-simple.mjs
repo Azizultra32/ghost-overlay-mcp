@@ -18,22 +18,50 @@ async function connectCDP() {
   }
 }
 
-async function getOrCreatePage(client) {
+async function getOrCreatePage(client, preferredUrl) {
   const { Target } = client;
   const { targetInfos } = await Target.getTargets();
-  const existing = targetInfos.find(t => t.type === 'page' && !t.attached);
-  if (existing) return existing.targetId;
+
+  if (preferredUrl) {
+    const exact = targetInfos.find((t) => t.type === 'page' && t.url === preferredUrl);
+    if (exact) return exact.targetId;
+  }
+
+  const realPage = targetInfos.find(
+    (t) =>
+      t.type === 'page' &&
+      t.url &&
+      t.url !== 'about:blank' &&
+      !t.url.startsWith('devtools://') &&
+      !t.url.startsWith('chrome-extension://')
+  );
+  if (realPage) return realPage.targetId;
+
+  const fallback = targetInfos.find((t) => t.type === 'page');
+  if (fallback) return fallback.targetId;
 
   const created = await Target.createTarget({ url: 'about:blank' });
   return created.targetId;
 }
 
-async function navigate(client, targetId, url) {
-  const { Target, Page } = client;
-  await Target.attachToTarget({ targetId, flatten: true });
+async function attachToPage(client, url) {
+  const { Target, Page, Runtime } = client;
+  const targetId = await getOrCreatePage(client, url);
+  const { sessionId } = await Target.attachToTarget({ targetId, flatten: true });
+  if (Runtime?.enable) await Runtime.enable();
   await Page.enable();
-  await Page.navigate({ url });
-  await Page.loadEventFired();
+
+  if (url) {
+    await Page.navigate({ url });
+    await Page.loadEventFired();
+  } else {
+    const currentUrl = await evalInPage(client, 'window.location.href');
+    if (!currentUrl || currentUrl === 'about:blank') {
+      throw new Error('No active tab found. Pass a URL or open the target page in Chrome first.');
+    }
+  }
+
+  return { targetId, sessionId };
 }
 
 async function evalInPage(client, expression, awaitPromise = false) {
@@ -227,9 +255,9 @@ async function toolAnchorMapPage(url) {
   if (!url) throw new Error('anchor_map_page requires a url argument');
 
   const client = await connectCDP();
+  let attachedTarget;
   try {
-    const targetId = await getOrCreatePage(client);
-    await navigate(client, targetId, url);
+    attachedTarget = await attachToPage(client, url);
     await sleep(1000); // Wait for page to settle
 
     const result = await mapDomFields(client, url);
@@ -243,6 +271,11 @@ async function toolAnchorMapPage(url) {
       capturedAt: new Date().toISOString()
     };
   } finally {
+    if (attachedTarget?.targetId) {
+      try {
+        await client.Target.detachFromTarget({ targetId: attachedTarget.targetId });
+      } catch (_) { /* ignore */ }
+    }
     await client.close();
   }
 }
@@ -250,12 +283,16 @@ async function toolAnchorMapPage(url) {
 /**
  * Tool: anchor_fill_field
  */
-async function toolAnchorFillField(selector, value) {
+async function toolAnchorFillField(selector, value, url) {
   if (!selector) throw new Error('anchor_fill_field requires a selector argument');
   if (value === undefined) throw new Error('anchor_fill_field requires a value argument');
 
   const client = await connectCDP();
+  let attachedTarget;
   try {
+    attachedTarget = await attachToPage(client, url);
+    await sleep(200); // allow DOM to settle post-navigation
+
     const result = await fillField(client, selector, value);
 
     if (!result.success) {
@@ -265,9 +302,15 @@ async function toolAnchorFillField(selector, value) {
     return {
       success: true,
       selector,
-      filled: true
+      filled: true,
+      url: url || 'active-tab'
     };
   } finally {
+    if (attachedTarget?.targetId) {
+      try {
+        await client.Target.detachFromTarget({ targetId: attachedTarget.targetId });
+      } catch (_) { /* ignore */ }
+    }
     await client.close();
   }
 }
@@ -283,11 +326,11 @@ async function main() {
 
 Usage:
   node mcp-helper-simple.mjs anchor_map_page <url>
-  node mcp-helper-simple.mjs anchor_fill_field <selector> <value>
+  node mcp-helper-simple.mjs anchor_fill_field <selector> <value> [url]
 
 Examples:
   node mcp-helper-simple.mjs anchor_map_page "file:///Users/ali/GHOST/demo/simple.html"
-  node mcp-helper-simple.mjs anchor_fill_field "#name" "John Doe"
+  node mcp-helper-simple.mjs anchor_fill_field "#name" "John Doe" "http://localhost:8788/ehr.html"
 `);
     process.exit(0);
   }
@@ -301,7 +344,8 @@ Examples:
     } else if (tool === 'anchor_fill_field') {
       const selector = args[0];
       const value = args[1];
-      result = await toolAnchorFillField(selector, value);
+      const url = args[2];
+      result = await toolAnchorFillField(selector, value, url);
     } else {
       throw new Error(`Unknown tool: ${tool}`);
     }

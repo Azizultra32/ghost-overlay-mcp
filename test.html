@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anchor Overlay Test</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #f0f4f8;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .mock-field {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Patient Chart (Mock EMR)</h1>
+
+    <div class="emr-header">
+        <div class="field-group">
+            <span class="label">Patient Name:</span>
+            <span class="value" contenteditable="true" id="pt-name">Alex Doe</span>
+        </div>
+        <div class="field-group">
+            <span class="label">DOB:</span>
+            <input type="text" value="04/12/1985">
+        </div>
+        <div class="field-group">
+            <label>MRN</label>
+            <input type="text" value="12345678">
+        </div>
+    </div>
+
+    <table class="emr-table">
+        <tr>
+            <th>Chief Complaint</th>
+            <td><input type="text" value="Cough" style="width: 100%"></td>
+        </tr>
+        <tr>
+            <th>History of Present Illness</th>
+            <td><textarea rows="4" style="width: 100%"></textarea></td>
+        </tr>
+        <tr>
+            <th>Vitals</th>
+            <td>
+                BP: <input type="text" size="6">
+                HR: <input type="text" size="4">
+                Temp: <input type="text" size="4">
+            </td>
+        </tr>
+    </table>
+
+    <div class="section">
+        <h3>Assessment & Plan</h3>
+        <div class="row">
+            <div class="col">
+                <label>Assessment</label>
+                <textarea rows="5"></textarea>
+            </div>
+            <div class="col">
+                <label>Plan</label>
+                <textarea rows="5"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load the Anchor Bundle -->
+    <script src="scripts/bundle.js"></script>
+</body>
+
+</html>

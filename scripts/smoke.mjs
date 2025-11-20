@@ -7,11 +7,12 @@ import { fileURLToPath } from 'url'
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url)) + '/..'
 const PORT = Number(process.env.MCP_DEBUG_PORT || 9222)
-const DEMO_URL = 'http://localhost:8788/ehr.html'
+const DEMO_URL = `http://localhost:8788/ehr.html?t=${Date.now()}`
 
 async function runBuild() {
   console.log('Building extension...')
   // Run the root build script instead of npm run build in extension/
+  await runCommand('node', ['scripts/build-extension.mjs'], { cwd: ROOT })
   await runCommand('node', ['scripts/build-bundle.mjs'], { cwd: ROOT })
 }
 
@@ -45,6 +46,14 @@ async function runSmoke() {
 
     summary.values = await readValues(client)
     summary.logs = await readOverlayLogs(client)
+    
+    // Check if smart fill worked
+    if (summary.values.name === 'Sarah Connor') {
+        console.log('✅ Smart Fill Verification Passed: Name is Sarah Connor')
+    } else {
+        console.warn('⚠️ Smart Fill Verification Failed: Name is ' + summary.values.name)
+    }
+
     console.log('SMOKE PASS', JSON.stringify(summary, null, 2))
   } finally {
     await client.close()
@@ -58,6 +67,10 @@ async function openPage(url) {
   const { Page, Runtime } = client // Get Runtime here
   await Page.enable()
   await Runtime.enable() // Enable Runtime
+  Runtime.consoleAPICalled((entry) => {
+      const args = entry.args.map(a => a.value || a.description).join(' ')
+      console.log('[Browser]', args)
+  })
   await Page.navigate({ url })
   await Page.loadEventFired()
   await delay(500)
@@ -138,7 +151,7 @@ async function readOverlayLogs(client) {
     expression: `(() => {
       const host = document.getElementById('__anchor_ghost_overlay__')
       if (!host || !host.shadowRoot) return []
-      const entries = host.shadowRoot.getElementById('log')
+      const entries = host.shadowRoot.getElementById('log-container')
       if (!entries) return []
       return Array.from(entries.children).map(el => el.textContent || '')
     })()`,

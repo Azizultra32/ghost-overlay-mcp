@@ -724,15 +724,17 @@ function attachApi() {
 
       // Send to Agent
       try {
-        await fetch('http://localhost:8787/dom', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: window.location.href,
-            ...mapResult
-          })
-        });
-        log('Sent map to Agent', 'info');
+          const payload = {
+              url: window.location.href,
+              ...mapResult
+          };
+          console.log('Sending to Agent:', JSON.stringify(payload));
+          await fetch('http://localhost:8787/dom', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+          });
+          log('Sent map to Agent', 'info');
       } catch (e) {
         log('Agent offline (using local mode)', 'warning');
       }

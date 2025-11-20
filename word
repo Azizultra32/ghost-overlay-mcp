@@ -7,17 +7,17 @@ STOP_SCRIPT="$ROOT_DIR/scripts/stop-mcp.sh"
 PORT="${MCP_DEBUG_PORT:-9222}"
 PROFILE_DIR="${MCP_PROFILE_DIR:-/tmp/chrome-mcp}"
 BROWSER_LOG="${MCP_BROWSER_LOG:-/tmp/chrome-mcp-browser.log}"
-CODENAME_PATTERN="codex app-server"
+CODENAME_PATTERN="${CODENAME_PATTERN:-chrome-devtools-mcp}"
+
 
 usage() {
   cat <<USAGE
-word (start|stop|status|reset|codex-clean|ready)
-  start        Kill stale Codex (configurable) + launch Chrome
-  stop         Stop Chrome profile + stray helpers
-  status       Show DevTools endpoint + Codex processes
-  reset        stop -> codex-clean -> start
-  ready        reset -> status (one command to get going)
-  codex-clean  kill stale "${CODENAME_PATTERN}" processes
+word (start|stop|status|reset|ready)
+  start        Kill stale processes + launch Chrome
+  stop         Kill Chrome + helpers
+  status       Show DevTools endpoint
+  reset        stop -> start
+  ready        stop -> start -> status (one shot)
 USAGE
 }
 
@@ -30,9 +30,8 @@ require_scripts() {
 
 do_start() {
   require_scripts
-  if [ "${WORD_AUTO_CODEX_CLEAN:-1}" = "1" ]; then
-    do_codex_clean || true
-  fi
+
+
   "$START_SCRIPT"
 }
 
@@ -49,7 +48,7 @@ do_status() {
     echo "UNREACHABLE on port ${PORT}"
   fi
   echo
-  echo "== Codex processes =="
+
   pgrep -fl "$CODENAME_PATTERN" 2>/dev/null || echo "(none)"
   echo
   echo "Logs:"
@@ -57,15 +56,10 @@ do_status() {
   echo "  (MCP server is spawned by each client via stdio)"
 }
 
-do_codex_clean() {
-  echo "Stopping stray Codex app-server processes..."
-  pkill -f "$CODENAME_PATTERN" 2>/dev/null && echo "Killed" || echo "None running"
-}
 
 do_reset() {
   do_stop || true
-  do_codex_clean || true
-  WORD_AUTO_CODEX_CLEAN=0 "$START_SCRIPT"
+  do_start
 }
 
 do_ready() {
@@ -90,9 +84,7 @@ case "$cmd" in
   ready|prep)
     do_ready
     ;;
-  codex-clean|codex|clean)
-    do_codex_clean
-    ;;
+
   *)
     usage
     exit 1

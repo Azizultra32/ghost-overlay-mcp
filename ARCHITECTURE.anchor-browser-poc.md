@@ -32,6 +32,23 @@ Anchor Browser pairs a Chrome MV3 extension with a local Express agent, a static
 5. After Fill completes, it reads DOM values (`#pt_name`, `#dob`, `#cc`) plus overlay log entries to confirm the agent plan executed.
 6. On success it prints `SMOKE PASS { ... }`; if any element is missing or actions fail, the script throws and exits with a non-zero status so regressions fail fast.
 
+## Execution Engine: The Human Emulator
+Unlike traditional "Form Fillers" that simply inject data (`el.value = 'data'`), the Anchor Engine is designed as a **Human Emulator**. This distinction is critical for:
+1.  **Bypassing Bot Detection**: Interacting with the DOM in a way that mimics human latency and focus patterns.
+2.  **Triggering SPA Logic**: Modern frameworks (React, Angular, Vue) often rely on `focus`, `blur`, and `input` event sequences to trigger validation and state updates.
+3.  **User Trust**: The "Blue Ghost" visual feedback (scrolling, highlighting) assures the user that the agent is working *with* them, not *behind* them.
+
+### Capabilities (The Maximal Engine)
+The Agent generates `FillPlan`s that utilize a rich set of actions:
+-   **`scroll`**: Smoothly scrolls the target element into the viewport (center).
+-   **`focus`**: Triggers the `focus` event and highlights the element with a blue ring.
+-   **`wait`**: Introduces artificial latency (e.g., "Thinking..." delays) to mimic cognitive processing.
+-   **`setValue`**: Types text character-by-character (or bulk update for long text) and dispatches `input`/`change` events.
+-   **`blur`**: Triggers the `blur` event, often committing the data in EMRs.
+-   **`click`**: Simulates a physical click for buttons, toggles, and checkboxes.
+
+This "Ghost in the Shell" approach ensures that the Anchor Browser can drive even the most complex, hostile, or legacy EMR interfaces.
+
 ## Design Principles
 - **PHI Safety** – DOM mapping and automation capture only metadata; fill plans write deterministic demo strings (`DEMO_*`), ensuring no patient data ever leaves the page.
 - **Separation of Concerns** – Extension handles UI/DOM interactions, the agent makes decisions, `demo/` provides fixtures, and automation scripts/`word` manage orchestration.

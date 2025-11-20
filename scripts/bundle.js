@@ -904,20 +904,23 @@ function attachApi() {
   const api = {
     togglePanel,
     map: async () => {
+      console.log('MAP CALLED');
       const mapResult = await mapDom(); // Returns { fields, title, context }
       lastMapped = mapResult.fields;
 
       // Send to Agent
       try {
-        await fetch('http://localhost:8787/dom', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: window.location.href,
-            ...mapResult
-          })
-        });
-        log('Sent map to Agent', 'info');
+          const payload = {
+              url: window.location.href,
+              ...mapResult
+          };
+          console.log('Sending to Agent:', JSON.stringify(payload));
+          await fetch('http://localhost:8787/dom', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+          });
+          log('Sent map to Agent. Context len: ' + (mapResult.context ? mapResult.context.length : 'N/A'), 'info');
       } catch (e) {
         log('Agent offline (using local mode)', 'warning');
       }
@@ -1056,32 +1059,45 @@ function attachApi() {
 
 
 
-// Initialize the overlay
-initOverlay();
+(function bootstrap() {
+  try {
+    initOverlay();
+    setupRuntimeMessages();
+    setupMcpBridge();
+    console.log('[Anchor] Content script ready:', window.location.href);
+  } catch (err) {
+    console.error('[Anchor] Failed to initialize overlay', err);
+  }
+})();
 
-// Wire runtime messages from popup (or bridge)
-if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+function ensureAnchorApi() {
+  if (!window.Anchor) {
+    throw new Error('Anchor API not ready');
+  }
+  return window.Anchor;
+}
+
+function setupRuntimeMessages() {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) return;
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (!window.Anchor) {
-      sendResponse({ ok: false, error: 'Anchor API not ready' });
-      return;
-    }
-
     (async () => {
       try {
+        const api = ensureAnchorApi();
+
         switch (msg?.type) {
           case 'TOGGLE_OVERLAY':
-            window.Anchor.togglePanel();
+            api.togglePanel();
             sendResponse({ ok: true });
             break;
           case 'MAP':
-            sendResponse(await window.Anchor.map());
+            sendResponse(await api.map());
             break;
           case 'SEND_MAP':
-            sendResponse(await window.Anchor.sendMap());
+            sendResponse(await api.sendMap());
             break;
           case 'FILL_DEMO':
-            sendResponse(await window.Anchor.fill());
+            sendResponse(await api.fill());
             break;
           default:
             sendResponse({ ok: false, error: 'Unknown command' });
@@ -1091,7 +1107,48 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
       }
     })();
 
-    return true; // keep message channel open for async
+    return true; // keep channel open for async responses
+  });
+}
+
+function setupMcpBridge() {
+  if (window.__ANCHOR_MCP_BRIDGE_READY__) return;
+  window.__ANCHOR_MCP_BRIDGE_READY__ = true;
+
+  const wire = (requestEvent, responseEvent, handler) => {
+    window.addEventListener(requestEvent, async (event) => {
+      try {
+        const payload = await handler(event?.detail);
+        window.dispatchEvent(new CustomEvent(responseEvent, { detail: { ok: true, ...payload } }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        window.dispatchEvent(new CustomEvent(responseEvent, { detail: { ok: false, error: message } }));
+      }
+    });
+  };
+
+  wire('__ANCHOR_MCP_MAP_REQUEST__', '__ANCHOR_MCP_MAP_RESPONSE__', async () => {
+    const api = ensureAnchorApi();
+    const mapResult = await api.map();
+    return {
+      url: window.location.href,
+      title: document.title,
+      fields: mapResult?.fields || []
+    };
+  });
+
+  wire('__ANCHOR_MCP_SEND_REQUEST__', '__ANCHOR_MCP_SEND_RESPONSE__', async () => {
+    const api = ensureAnchorApi();
+    return await api.sendMap();
+  });
+
+  wire('__ANCHOR_MCP_FILL_REQUEST__', '__ANCHOR_MCP_FILL_RESPONSE__', async (detail) => {
+    const api = ensureAnchorApi();
+    // allow optional note injection via event detail
+    if (detail?.note && typeof detail.note === 'string') {
+      window.__ANCHOR_MCP_NOTE__ = detail.note;
+    }
+    return await api.fill();
   });
 }
 

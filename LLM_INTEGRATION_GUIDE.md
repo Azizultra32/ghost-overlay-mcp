@@ -197,6 +197,17 @@ Page Context → OpenAI GPT-4o-mini → "Sarah Connor"
 
 ---
 
+## OSCAR Onboarding → Autopilot (Compact Blueprint)
+
+1. **Template Bootstrap** – Start every deployment from a shared OSCAR baseline (known screens, popups, navigation quirks). Store it centrally and version it via changelog entries.
+2. **Monitoring Window (≈48 h)** – Let the clinician drive naturally while the extension logs non-PHI telemetry: which screens open, how popups are triggered, field fill order, navigation loops. All traces stay local/hashed but summarized in the central changelog.
+3. **Confidence Gate** – Compute per-doctor coverage stats (e.g., ≥99 % of unique surfaces seen, selectors stable <1 % drift). Until that bar is met, Anchor stays in “assist + monitor” mode.
+4. **Autopilot Handoff** – Once thresholds pass, enable automatic Map → Plan → Execute for the learned workflow. Keep watching for layout drift; any novel screen or OSCAR update flips the doctor back into monitoring, updates the changelog, and retrains the profile.
+
+Result: every doctor inherits the OSCAR template, the system learns their personal path over two days, and autopilot only lights up when both the shared template and the individual telemetry say “safe”.
+
+---
+
 ## Security Notes
 
 ✅ **API Key Protection:**

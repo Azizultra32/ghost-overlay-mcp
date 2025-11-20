@@ -1,8 +1,8 @@
-# Manual Test for Codex CLI with MCP
+# Manual Test for Antigravity Browser with MCP
 
-## IMPORTANT: Give this to Codex CLI
+## IMPORTANT: Give this to Antigravity Browser
 
-Paste this into Codex CLI to test the extension with MCP tools:
+Paste this into Antigravity Browser to test the extension with MCP tools:
 
 ```
 Use your chrome-devtools MCP tools to:

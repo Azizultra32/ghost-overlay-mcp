@@ -268,9 +268,9 @@ MCP integration is successful when:
 
 ## 🚀 Next Steps After Integration
 
-1. Wire mcp-helper.mjs into Codex MCP server
+1. Wire mcp-helper.mjs into Antigravity Browser MCP server
 2. Create MCP tool definitions (anchor_map_page, anchor_fill_field)
-3. Test end-to-end with Codex CLI
+3. Test end-to-end with Antigravity Browser
 4. Document in main README.md
 5. Add to smoke tests
 
