@@ -5,57 +5,65 @@
 
 ---
 
-## CRITICAL BLOCKERS (MUST RESOLVE BEFORE KICKOFF)
+## CRITICAL SETUP TASKS (BEFORE WEEK 1 STARTS)
 
-### 1. Assign Workstream Leads ⚠️ BLOCKING
+### 1. ✅ Configure OpenAI API Key
 
-- [ ] **Infrastructure Lead** (MCP completion) - 50% time, Week 1-2
-- [ ] **DOM/Frontend Lead** (DOM mapper upgrades) - 100% time, Week 1-4
-- [ ] **Engine Lead** (Fill engine hardening) - 100% time, Week 2-4
-- [ ] **Clinical QA Lead** (OSCAR integration) - 50% time, Week 3-6
-- [ ] **AI/LLM Lead** (LLM integration) - 75% time, Week 2-5
-- [ ] **Security Lead** (PHI audits) - 25% time, Week 1-6
-- [ ] **DevOps Lead** (Deployment automation) - 50% time, Week 4-6
+**Status:** READY - User to provide key\
+**Action:** Add API key to `agent/.env`
 
-**Action:** Project Manager assigns leads and confirms availability
+```bash
+# Open agent/.env and add:
+OPENAI_API_KEY=sk-proj-your-key-here
+```
 
----
+**What this enables:**
 
-### 2. Provision OSCAR Test Instance ⚠️ BLOCKING
+- 🤖 **LLM Intelligence** - AI-powered SOAP note generation
+- 🤖 **Smart Fill** - Context-aware field population
+- 🤖 **Field Inference** - Intelligent value extraction
 
-- [ ] **Option A:** Self-hosted OSCAR on local server (free, requires DevOps
-      setup)
-- [ ] **Option B:** Cloud-hosted OSCAR instance ($100/mo, faster setup)
-- [ ] Create test URL: `https://oscar-test.internal` or similar
-- [ ] Generate SSL cert if self-hosted
-- [ ] Test accessibility from development machines
-
-**Action:** DevOps Lead provisions by Nov 25
+**See:** `LLM_INTEGRATION_GUIDE.md` for detailed setup
 
 ---
 
-### 3. Obtain OpenAI API Key ⚠️ BLOCKING
+### 2. 🟡 Set Up OSCAR Test Environment
 
-- [ ] Create OpenAI account (or use existing)
-- [ ] Purchase API credits (~$50 for dev testing)
-- [ ] Store API key in agent `.env` file
-- [ ] Test API connectivity:
-      `curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`
-- [ ] Set usage limits ($500/mo cap for prod)
+**Status:** PENDING - Need to choose approach\
+**Options:**
 
-**Action:** AI Lead obtains key by Nov 25
+**A) Local Docker Setup** (~15 min)
+
+```bash
+git clone https://github.com/oscaremr/oscar.git
+cd oscar && docker-compose up -d
+# Access at http://localhost:8080/oscar
+```
+
+**B) Supervised Access to Real OSCAR**
+
+- User provides URL and credentials
+- Test only during supervised sessions
+- Focus on mapping, not filling
+
+**What this enables:**
+
+- 🎯 **Real-World Testing** - Validate on actual EMR
+- 🎯 **Form Analysis** - Document OSCAR field patterns
+- 🎯 **Compatibility Verification** - Ensure 95%+ fill success
+
+**See:** `OSCAR_INTEGRATION_GUIDE.md` for detailed options
 
 ---
 
-### 4. Budget Approval ⚠️ BLOCKING
+### 3. ✅ Install Dependencies
 
-**Monthly Costs:**
+**Status:** DONE - OpenAI package already added
 
-- OpenAI API: $50 (dev) + $500 (prod) = $550/mo
-- OSCAR Cloud Hosting (if chosen): $100/mo
-- **Total: $650/mo**
-
-**Action:** Finance approves budget by Nov 25
+```bash
+cd agent
+npm install  # Will install openai + dotenv
+```
 
 ---
 
