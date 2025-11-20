@@ -1,0 +1,472 @@
+# ANCHOR BROWSER - SYSTEM ARCHITECTURE DIAGRAMS
+
+## 1. COMPLETE SYSTEM ARCHITECTURE
+
+```mermaid
+graph TB
+    A1[AI Agent: GPT-4/Claude/Codex]
+    A2[AI Agent: Custom LLM]
+    
+    M1[MCP: anchor_map_page tool]
+    M2[MCP: anchor_plan_fill tool]
+    M3[MCP: anchor_execute_fill tool]
+    M4[MCP: Chrome Controller]
+    M5[MCP: Agent Client]
+    
+    C1[Chrome: DevTools Protocol]
+    C2[Chrome: Tab Manager]
+    C3[Chrome: Extension Runtime]
+    
+    E1[Extension: Service Worker]
+    E2[Extension: Content Script]
+    E3[Extension: Ghost Overlay]
+    E4[Extension: DOM Mapper]
+    E5[Extension: Fill Engine]
+    
+    P1[EMR: Input Fields]
+    P2[EMR: Textareas]
+    P3[EMR: Popups/Modals]
+    
+    S1[Agent: API Layer]
+    S2[Agent: Planning Engine]
+    S3[Agent: Note Parser]
+    S4[Agent: Field Matcher]
+    S5[Agent: PHI Guardian]
+    S6[Agent: EMR Knowledge Base]
+    
+    AS1[AssistMD: Voice Transcription]
+    AS2[AssistMD: SOAP Composer]
+    
+    A1 -->|MCP Protocol| M1
+    A1 -->|MCP Protocol| M2
+    A1 -->|MCP Protocol| M3
+    A2 -->|MCP Protocol| M1
+    
+    M1 -->|CDP Commands| M4
+    M2 -->|HTTP| M5
+    M3 -->|CDP Commands| M4
+    M4 -->|WebSocket| C1
+    M5 -->|REST API| S1
+    
+    C1 -->|Debugger API| C2
+    C2 -->|Inject| E1
+    E1 -->|Messages| E2
+    E2 -->|Inject| E3
+    E3 -->|Uses| E4
+    E3 -->|Uses| E5
+    
+    E4 -->|Scan| P1
+    E4 -->|Scan| P2
+    E4 -->|Detect| P3
+    E5 -->|Fill| P1
+    E5 -->|Fill| P2
+    
+    E2 -->|POST /dom| S1
+    S1 -->|Store| S5
+    S1 -->|Query| S6
+    S1 -->|Delegate| S2
+    S2 -->|Parse| S3
+    S2 -->|Match| S4
+    S4 -->|Use| S6
+    
+    AS1 -->|Clinical Notes| S1
+    AS2 -->|Structured Notes| S1
+    
+    style A1 fill:#e1f5ff
+    style A2 fill:#e1f5ff
+    style M1 fill:#fff4e1
+    style M2 fill:#fff4e1
+    style M3 fill:#fff4e1
+    style E3 fill:#e8f5e9
+    style E4 fill:#e8f5e9
+    style E5 fill:#e8f5e9
+    style S2 fill:#f3e5f5
+    style S3 fill:#f3e5f5
+    style S4 fill:#f3e5f5
+```
+
+## 2. DATA FLOW - MAP OPERATION
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Agent
+    participant MCP as MCP Server
+    participant CDP as Chrome DevTools
+    participant Ext as Extension
+    participant DOM as DOM Mapper
+    participant Page as EMR Page
+    participant Agent as Agent Server
+    
+    AI->>MCP: anchor_map_page(url)
+    activate MCP
+    
+    MCP->>CDP: Page.navigate
+    activate CDP
+    CDP->>Page: Load URL
+    Page-->>CDP: Page loaded
+    CDP-->>MCP: loadEventFired
+    deactivate CDP
+    
+    MCP->>CDP: Runtime.evaluate
+    activate CDP
+    CDP->>Ext: ANCHOR_BRIDGE_EVENT
+    deactivate CDP
+    
+    activate Ext
+    Ext->>DOM: map()
+    activate DOM
+    DOM->>Page: Traverse document
+    DOM->>Page: Find fields
+    DOM->>Page: Extract metadata
+    DOM->>Page: Build selectors
+    Page-->>DOM: Field data
+    DOM-->>Ext: Raw DOMMap
+    deactivate DOM
+    
+    Ext->>Ext: PHI scrubbing
+    Ext->>Agent: POST /dom
+    activate Agent
+    Agent->>Agent: Store map
+    Agent-->>Ext: success
+    deactivate Agent
+    
+    Ext->>CDP: Map complete
+    CDP->>MCP: Get map
+    MCP-->>AI: Result
+    deactivate Ext
+    deactivate MCP
+```
+
+## 3. DATA FLOW - PLAN OPERATION
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Agent
+    participant MCP as MCP Server
+    participant Agent as Agent Server
+    participant Parser as Note Parser
+    participant Matcher as Field Matcher
+    participant KB as Knowledge Base
+    
+    AI->>MCP: anchor_plan_fill(url, note)
+    activate MCP
+    
+    MCP->>Agent: POST /actions/plan
+    activate Agent
+    
+    Agent->>Agent: Retrieve DOM map
+    
+    Agent->>Parser: parse(note)
+    activate Parser
+    Parser->>Parser: Detect format
+    Parser->>Parser: Split sections
+    Parser-->>Agent: ClinicalNote
+    deactivate Parser
+    
+    Agent->>Matcher: matchSections
+    activate Matcher
+    
+    loop For each section
+        Matcher->>KB: Get patterns
+        KB-->>Matcher: Patterns
+        Matcher->>Matcher: Score fields
+        Matcher->>Matcher: Select best
+    end
+    
+    Matcher-->>Agent: Matches
+    deactivate Matcher
+    
+    Agent->>Agent: Build FillPlan
+    Agent->>Agent: Validate
+    
+    Agent-->>MCP: FillPlan
+    deactivate Agent
+    
+    MCP-->>AI: Plan JSON
+    deactivate MCP
+```
+
+## 4. DATA FLOW - FILL OPERATION
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Agent
+    participant MCP as MCP Server
+    participant CDP as Chrome DevTools
+    participant Ext as Extension
+    participant Fill as Fill Engine
+    participant Page as EMR Page
+    
+    AI->>MCP: anchor_execute_fill(url, plan)
+    activate MCP
+    
+    MCP->>CDP: dispatch FILL event
+    activate CDP
+    CDP->>Ext: ANCHOR_BRIDGE_EVENT
+    deactivate CDP
+    
+    activate Ext
+    Ext->>Fill: fill(plan)
+    activate Fill
+    
+    loop For each item
+        Fill->>Page: querySelector
+        Page-->>Fill: Element
+        Fill->>Fill: Validate
+        Fill->>Page: element.value = text
+        Fill->>Page: dispatchEvent
+        Fill->>Fill: Highlight
+    end
+    
+    Fill-->>Ext: Success
+    deactivate Fill
+    
+    Ext->>CDP: Fill complete
+    CDP->>MCP: Success
+    MCP-->>AI: Result
+    deactivate Ext
+    deactivate MCP
+```
+
+## 5. COMPONENT INTERACTION - EXTENSION INTERNALS
+
+```mermaid
+graph LR
+    SW[Service Worker]
+    ST[Storage Manager]
+    MSG[Message Router]
+    CS[Content Script]
+    BR[Bridge Listener]
+    GH[Ghost Overlay]
+    UI[UI Components]
+    MAP[DOM Mapper]
+    FILL[Fill Engine]
+    DOC[Document]
+    
+    SW <-->|messages| CS
+    SW <-->|storage| ST
+    SW -->|route| MSG
+    CS -->|inject| GH
+    CS -->|listen| BR
+    BR -->|trigger| GH
+    GH -->|render| UI
+    GH -->|use| MAP
+    GH -->|use| FILL
+    MAP -->|scan| DOC
+    FILL -->|modify| DOC
+```
+
+## 6. PLANNING ENGINE ARCHITECTURE
+
+```mermaid
+graph TB
+    I1[Clinical Note Text]
+    I2[DOM Map]
+    
+    NP1[Format Detector]
+    NP2[Section Splitter]
+    NP3[Content Extractor]
+    
+    FM1[Score Calculator]
+    FM2[Label Matcher]
+    FM3[Type Matcher]
+    
+    KB1[OSCAR Patterns]
+    KB2[Epic Patterns]
+    KB3[Generic Patterns]
+    
+    O1[Fill Plan]
+    O2[Confidence Scores]
+    
+    I1 --> NP1
+    NP1 --> NP2
+    NP2 --> NP3
+    NP3 --> FM1
+    
+    I2 --> FM1
+    
+    FM1 --> FM2
+    FM1 --> FM3
+    
+    KB1 -.->|patterns| FM2
+    KB2 -.->|patterns| FM2
+    KB3 -.->|patterns| FM2
+    
+    FM2 --> O1
+    FM3 --> O1
+    FM1 --> O2
+```
+
+## 7. SECURITY & PHI FLOW
+
+```mermaid
+graph TB
+    P1[Patient Name]
+    P2[MRN]
+    P3[DOB]
+    P4[Clinical Data]
+    P5[Field Structures]
+    
+    E1[DOM Mapper]
+    E2[PHI Guardian]
+    E3[Pseudonymizer]
+    
+    S1[Selectors]
+    S2[Labels]
+    S3[Positions]
+    S4[Types]
+    
+    A1[DOM Maps Storage]
+    A2[Planning Engine]
+    
+    P5 -->|scan| E1
+    P1 -.->|blocked| E2
+    P2 -.->|blocked| E2
+    P3 -.->|blocked| E2
+    P4 -.->|blocked| E2
+    
+    E1 -->|extract| E2
+    E2 -->|scrub| E3
+    E3 -->|output| S1
+    E3 -->|output| S2
+    E3 -->|output| S3
+    E3 -->|output| S4
+    
+    S1 -->|network| A1
+    S2 -->|network| A1
+    S3 -->|network| A1
+    S4 -->|network| A1
+    
+    A1 -.->|query| A2
+    
+    style P1 fill:#ffcdd2
+    style P2 fill:#ffcdd2
+    style P3 fill:#ffcdd2
+    style P4 fill:#ffcdd2
+    style E2 fill:#fff59d
+    style E3 fill:#fff59d
+    style S1 fill:#c8e6c9
+    style S2 fill:#c8e6c9
+    style S3 fill:#c8e6c9
+    style S4 fill:#c8e6c9
+```
+
+## 8. STATE MACHINE - FILL OPERATION
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Mapping: Trigger map
+    Mapping --> MapComplete: Success
+    Mapping --> MapError: Error
+    MapError --> Idle: Reset
+    
+    MapComplete --> Planning: Request plan
+    Planning --> PlanReady: Success
+    Planning --> PlanError: No matches
+    PlanError --> MapComplete: Retry
+    
+    PlanReady --> Filling: Execute
+    Filling --> FillItem: Next item
+    FillItem --> ValidateField: Resolve
+    ValidateField --> ExecuteFill: Valid
+    ValidateField --> SkipField: Invalid
+    
+    ExecuteFill --> RecordSuccess: Success
+    ExecuteFill --> RecordFailure: Failure
+    RecordSuccess --> FillItem: More items
+    SkipField --> FillItem: More items
+    RecordFailure --> FillItem: More items
+    
+    FillItem --> FillComplete: Done
+    FillComplete --> Idle: Complete
+    
+    FillComplete --> Undoing: Undo
+    Undoing --> Idle: Restored
+```
+
+## 9. ERROR HANDLING FLOW
+
+```mermaid
+graph TB
+    START[Operation Start]
+    TRY{Try Operation}
+    LOG[Log Success]
+    RETURN[Return Result]
+    CATCH[Catch Error]
+    IDENTIFY{Identify Type}
+    RETRY{Retry?}
+    FALLBACK[Fallback Selector]
+    SCRUB[Force Scrub]
+    CANCEL[Cancel]
+    REPORT[Report Error]
+    WAIT[Wait 1s]
+    
+    START --> TRY
+    TRY -->|Success| LOG
+    LOG --> RETURN
+    TRY -->|Error| CATCH
+    CATCH --> IDENTIFY
+    
+    IDENTIFY -->|Network| RETRY
+    IDENTIFY -->|Not Found| FALLBACK
+    IDENTIFY -->|PHI| SCRUB
+    IDENTIFY -->|Timeout| CANCEL
+    IDENTIFY -->|Unknown| REPORT
+    
+    RETRY -->|Yes| WAIT
+    WAIT --> TRY
+    RETRY -->|No| REPORT
+    
+    FALLBACK -->|Found| TRY
+    FALLBACK -->|Not Found| REPORT
+    
+    SCRUB --> REPORT
+    CANCEL --> REPORT
+    REPORT --> RETURN
+```
+
+## 10. MCP TOOL ORCHESTRATION
+
+```mermaid
+graph TB
+    W1[Receive Task]
+    W2[Call map_page]
+    W3[Await Result]
+    W4[Analyze Fields]
+    W5[Call plan_fill]
+    W6[Review Plan]
+    W7[Call execute_fill]
+    W8[Verify Success]
+    W9[Report Complete]
+    
+    T1[anchor_map_page]
+    T2[anchor_plan_fill]
+    T3[anchor_execute_fill]
+    
+    B1[Navigate Browser]
+    B2[Wait for Load]
+    B3[Dispatch Event]
+    B4[Monitor Response]
+    
+    W1 --> W2
+    W2 --> T1
+    T1 --> B1
+    B1 --> B2
+    B2 --> B3
+    B3 --> B4
+    B4 --> W3
+    
+    W3 --> W4
+    W4 --> W5
+    W5 --> T2
+    T2 --> W6
+    
+    W6 --> W7
+    W7 --> T3
+    T3 --> B1
+    B3 --> B4
+    B4 --> W8
+    
+    W8 --> W9
+```

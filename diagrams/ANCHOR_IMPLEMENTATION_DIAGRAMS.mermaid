@@ -1,0 +1,529 @@
+# ANCHOR BROWSER - IMPLEMENTATION DETAIL DIAGRAMS
+
+## 1. EXTENSION CLASS DIAGRAM
+
+```mermaid
+classDiagram
+    class ServiceWorker {
+        +Map tabStates
+        +onMessage()
+        +handleMapRequest()
+        +handleFillRequest()
+        +storeDOMMap()
+        +notifyFillComplete()
+    }
+    
+    class ContentScript {
+        +boolean isInitialized
+        +injectGhostOverlay()
+        +setupBridgeListener()
+        +observePageMutations()
+    }
+    
+    class GhostOverlay {
+        +ShadowRoot shadowRoot
+        +DOMMapper mapper
+        +FillEngine filler
+        +initialize()
+        +map()
+        +fill()
+        +toggle()
+    }
+    
+    class DOMMapper {
+        +scanPage()
+        +extractFieldMetadata()
+        +buildSelector()
+        +inferLabel()
+        +classifyField()
+    }
+    
+    class FillEngine {
+        +Array fillHistory
+        +Array undoStack
+        +fillField()
+        +undo()
+        +executeFill()
+        +triggerEvents()
+    }
+    
+    class BridgeListener {
+        +addEventListener()
+        +dispatch()
+        +waitForResponse()
+    }
+    
+    ServiceWorker "1" -- "1" ContentScript
+    ContentScript "1" -- "1" GhostOverlay
+    GhostOverlay "1" -- "1" DOMMapper
+    GhostOverlay "1" -- "1" FillEngine
+    ContentScript "1" -- "1" BridgeListener
+```
+
+## 2. AGENT SERVER CLASS DIAGRAM
+
+```mermaid
+classDiagram
+    class AgentServer {
+        +Map domMaps
+        +PlanningEngine planner
+        +PHIGuardian guardian
+        +start()
+        +stop()
+    }
+    
+    class APILayer {
+        +postDOM()
+        +getDOM()
+        +postPlan()
+        +postFill()
+        +getHealth()
+    }
+    
+    class PlanningEngine {
+        +DOMMap domMap
+        +NoteParser parser
+        +FieldMatcher matcher
+        +buildPlan()
+        +validatePlan()
+    }
+    
+    class NoteParser {
+        +Map sectionPatterns
+        +parse()
+        +detectFormat()
+        +detectSectionHeader()
+    }
+    
+    class FieldMatcher {
+        +matchSectionsToFields()
+        +findBestFieldForSection()
+        +calculateMatchScore()
+        +fuzzyMatch()
+    }
+    
+    class PHIGuardian {
+        +Map PHI_PATTERNS
+        +scrubMap()
+        +scrubField()
+        +scrubText()
+        +sanitizeURL()
+    }
+    
+    class KnowledgeBase {
+        +Map oscarPatterns
+        +Map epicPatterns
+        +getPatternForEMR()
+        +getSectionHeuristics()
+    }
+    
+    AgentServer "1" -- "1" APILayer
+    AgentServer "1" -- "1" PlanningEngine
+    AgentServer "1" -- "1" PHIGuardian
+    PlanningEngine "1" -- "1" NoteParser
+    PlanningEngine "1" -- "1" FieldMatcher
+    FieldMatcher "1" -- "1" KnowledgeBase
+```
+
+## 3. MCP SERVER CLASS DIAGRAM
+
+```mermaid
+classDiagram
+    class MCPServer {
+        +Server server
+        +ChromeController chrome
+        +AgentClient agent
+        +initialize()
+        +registerTools()
+        +handleToolCall()
+    }
+    
+    class ChromeController {
+        +CDPClient client
+        +number port
+        +string extensionId
+        +connect()
+        +navigate()
+        +waitForPageLoad()
+        +dispatchBridgeEvent()
+    }
+    
+    class AgentClient {
+        +string baseURL
+        +storeDOMMap()
+        +getDOMMap()
+        +planFill()
+        +executeFill()
+    }
+    
+    class ToolRegistry {
+        +Map tools
+        +register()
+        +get()
+        +list()
+    }
+    
+    class AnchorMapPageTool {
+        +string name
+        +object inputSchema
+        +execute()
+    }
+    
+    class AnchorPlanFillTool {
+        +string name
+        +object inputSchema
+        +execute()
+    }
+    
+    class AnchorExecuteFillTool {
+        +string name
+        +object inputSchema
+        +execute()
+    }
+    
+    MCPServer "1" -- "1" ChromeController
+    MCPServer "1" -- "1" AgentClient
+    MCPServer "1" -- "1" ToolRegistry
+    ToolRegistry "1" -- "*" AnchorMapPageTool
+    ToolRegistry "1" -- "*" AnchorPlanFillTool
+    ToolRegistry "1" -- "*" AnchorExecuteFillTool
+```
+
+## 4. DATA MODEL - TYPE HIERARCHY
+
+```mermaid
+classDiagram
+    class DOMMap {
+        +string url
+        +number timestamp
+        +Array fields
+        +Array sections
+        +object metadata
+    }
+    
+    class DOMField {
+        +string selector
+        +number selectorScore
+        +string tag
+        +string type
+        +string label
+        +boolean isVisible
+        +object position
+    }
+    
+    class FieldPosition {
+        +number x
+        +number y
+        +number width
+        +number height
+    }
+    
+    class FillPlan {
+        +Array items
+        +number confidence
+        +Array warnings
+        +object metadata
+    }
+    
+    class FillPlanItem {
+        +string selector
+        +string value
+        +string fieldType
+        +number confidence
+    }
+    
+    class ClinicalNote {
+        +string raw
+        +Array sections
+        +string format
+    }
+    
+    class NoteSection {
+        +string type
+        +string content
+        +number startIndex
+        +number endIndex
+    }
+    
+    DOMMap "1" -- "*" DOMField
+    DOMField "1" -- "1" FieldPosition
+    FillPlan "1" -- "*" FillPlanItem
+    ClinicalNote "1" -- "*" NoteSection
+```
+
+## 5. API ENDPOINT FLOW - POST /dom
+
+```mermaid
+sequenceDiagram
+    participant Ext as Extension
+    participant API as API Layer
+    participant Guard as PHI Guardian
+    participant Store as Store
+    
+    Ext->>API: POST /dom
+    activate API
+    
+    API->>API: Validate
+    
+    API->>Guard: scrubMap()
+    activate Guard
+    Guard->>Guard: Remove PHI
+    Guard-->>API: Clean map
+    deactivate Guard
+    
+    API->>Store: Store map
+    Store-->>API: Success
+    
+    API-->>Ext: 200 OK
+    deactivate API
+```
+
+## 6. API ENDPOINT FLOW - POST /actions/plan
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Store
+    participant PE as PlanEngine
+    participant NP as NoteParser
+    participant FM as FieldMatcher
+    
+    Client->>API: POST /actions/plan
+    activate API
+    
+    API->>Store: Get map
+    Store-->>API: DOMMap
+    
+    API->>PE: buildPlan()
+    activate PE
+    
+    PE->>NP: parse(note)
+    NP-->>PE: Sections
+    
+    PE->>FM: matchSections()
+    FM-->>PE: Matches
+    
+    PE->>PE: Build plan
+    PE-->>API: FillPlan
+    deactivate PE
+    
+    API-->>Client: 200 OK
+    deactivate API
+```
+
+## 7. EXTENSION EVENT FLOW - MAP
+
+```mermaid
+sequenceDiagram
+    participant Page
+    participant Bridge
+    participant Content
+    participant Ghost
+    participant Mapper
+    participant BG as ServiceWorker
+    participant Agent
+    
+    Page->>Bridge: BRIDGE_EVENT
+    Bridge->>Content: MAP action
+    Content->>Ghost: map()
+    
+    Ghost->>Mapper: scanPage()
+    Mapper->>Page: Query DOM
+    Page-->>Mapper: Elements
+    Mapper-->>Ghost: DOMMap
+    
+    Ghost->>Ghost: Scrub PHI
+    Ghost->>Agent: POST /dom
+    Agent-->>Ghost: Success
+    
+    Ghost->>BG: Map ready
+```
+
+## 8. EXTENSION EVENT FLOW - FILL
+
+```mermaid
+sequenceDiagram
+    participant Page
+    participant Bridge
+    participant Content
+    participant Ghost
+    participant Fill as FillEngine
+    participant BG as ServiceWorker
+    
+    Page->>Bridge: BRIDGE_EVENT
+    Bridge->>Content: FILL action
+    Content->>Ghost: fill(plan)
+    
+    loop For each item
+        Ghost->>Fill: fillField()
+        Fill->>Page: Query selector
+        Page-->>Fill: Element
+        Fill->>Page: Set value
+        Fill->>Page: Trigger events
+    end
+    
+    Fill-->>Ghost: Results
+    Ghost->>BG: Fill complete
+```
+
+## 9. SELECTOR BUILDING ALGORITHM
+
+```mermaid
+flowchart TD
+    START[Build Selector]
+    
+    CHECK_ID{Has stable ID?}
+    USE_ID[Return #id]
+    
+    CHECK_NAME{Has name?}
+    USE_NAME[Return tag name]
+    
+    CHECK_DATA{Has data attrs?}
+    CHECK_STABLE{Is stable?}
+    USE_DATA[Return data attr]
+    
+    CHECK_ARIA{Has aria-label?}
+    USE_ARIA[Return aria selector]
+    
+    USE_PATH[Build nth-child path]
+    RETURN[Return selector]
+    
+    START --> CHECK_ID
+    CHECK_ID -->|Yes| USE_ID
+    CHECK_ID -->|No| CHECK_NAME
+    
+    CHECK_NAME -->|Yes| USE_NAME
+    CHECK_NAME -->|No| CHECK_DATA
+    
+    CHECK_DATA -->|Yes| CHECK_STABLE
+    CHECK_STABLE -->|Yes| USE_DATA
+    CHECK_STABLE -->|No| CHECK_ARIA
+    CHECK_DATA -->|No| CHECK_ARIA
+    
+    CHECK_ARIA -->|Yes| USE_ARIA
+    CHECK_ARIA -->|No| USE_PATH
+    
+    USE_ID --> RETURN
+    USE_NAME --> RETURN
+    USE_DATA --> RETURN
+    USE_ARIA --> RETURN
+    USE_PATH --> RETURN
+```
+
+## 10. FIELD MATCHING ALGORITHM
+
+```mermaid
+flowchart TD
+    START[Match Section]
+    INIT[bestScore = 0]
+    LOOP{For each field}
+    
+    SCORE_INIT[score = 0]
+    TYPE_CHECK{Type match?}
+    ADD_08[score += 0.8]
+    
+    LABEL_CHECK[fuzzyMatch label]
+    ADD_LABEL[score += match * 0.5]
+    
+    SIZE_CHECK{Large content?}
+    ADD_02[score += 0.2]
+    
+    COMPARE{score > best?}
+    UPDATE[bestMatch = field]
+    
+    THRESHOLD{score > min?}
+    RETURN_MATCH[Return match]
+    RETURN_NULL[Return null]
+    
+    START --> INIT
+    INIT --> LOOP
+    LOOP -->|Next| SCORE_INIT
+    
+    SCORE_INIT --> TYPE_CHECK
+    TYPE_CHECK -->|Yes| ADD_08
+    TYPE_CHECK -->|No| LABEL_CHECK
+    ADD_08 --> LABEL_CHECK
+    
+    LABEL_CHECK --> ADD_LABEL
+    ADD_LABEL --> SIZE_CHECK
+    
+    SIZE_CHECK -->|Yes| ADD_02
+    SIZE_CHECK -->|No| COMPARE
+    ADD_02 --> COMPARE
+    
+    COMPARE -->|Yes| UPDATE
+    COMPARE -->|No| LOOP
+    UPDATE --> LOOP
+    
+    LOOP -->|Done| THRESHOLD
+    THRESHOLD -->|Yes| RETURN_MATCH
+    THRESHOLD -->|No| RETURN_NULL
+```
+
+## 11. UNDO STACK IMPLEMENTATION
+
+```mermaid
+flowchart TD
+    FILL_START[Fill Operation]
+    GET_ORIGINAL[Get original value]
+    STORE_UNDO[Push to undoStack]
+    EXECUTE_FILL[Execute fill]
+    DONE[Complete]
+    
+    UNDO_TRIGGER[User clicks Undo]
+    CHECK_STACK{Stack not empty?}
+    ERROR[Show error]
+    POP[Pop last item]
+    RESTORE[Restore value]
+    TRIGGER_EVENTS[Trigger events]
+    UNDO_COMPLETE[Complete]
+    
+    FILL_START --> GET_ORIGINAL
+    GET_ORIGINAL --> STORE_UNDO
+    STORE_UNDO --> EXECUTE_FILL
+    EXECUTE_FILL --> DONE
+    
+    UNDO_TRIGGER --> CHECK_STACK
+    CHECK_STACK -->|No| ERROR
+    CHECK_STACK -->|Yes| POP
+    POP --> RESTORE
+    RESTORE --> TRIGGER_EVENTS
+    TRIGGER_EVENTS --> UNDO_COMPLETE
+```
+
+## 12. PHI SCRUBBING PIPELINE
+
+```mermaid
+flowchart TD
+    INPUT[Raw DOMMap]
+    CLONE[Clone map]
+    LOOP_FIELDS{For each field}
+    
+    REMOVE_VALUE[Delete currentValue]
+    ADD_META[Add metadata]
+    SCRUB_LABEL[Scrub label]
+    SCRUB_PLACEHOLDER[Scrub placeholder]
+    NEXT_FIELD{More fields?}
+    
+    SCRUB_URL[Sanitize URL]
+    GENERIC_TITLE[Generic title]
+    VALIDATE[Validate no PHI]
+    OUTPUT[Clean DOMMap]
+    
+    INPUT --> CLONE
+    CLONE --> LOOP_FIELDS
+    
+    LOOP_FIELDS --> REMOVE_VALUE
+    REMOVE_VALUE --> ADD_META
+    ADD_META --> SCRUB_LABEL
+    SCRUB_LABEL --> SCRUB_PLACEHOLDER
+    SCRUB_PLACEHOLDER --> NEXT_FIELD
+    
+    NEXT_FIELD -->|Yes| LOOP_FIELDS
+    NEXT_FIELD -->|No| SCRUB_URL
+    
+    SCRUB_URL --> GENERIC_TITLE
+    GENERIC_TITLE --> VALIDATE
+    VALIDATE --> OUTPUT
+```
