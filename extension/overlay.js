@@ -17,6 +17,7 @@ let status = { mode: 'clinician', mappedCount: 0, lastAction: 'Idle', activeTab:
 let lastMapped = [];
 let lastPlan = null;
 let lastSnapshot = null;
+let autopilotStatus = { ready: false, coverage: 0, events: 0, uniqueSurfaces: 0 };
 
 export function initOverlay() {
   ensureToggleButton();
@@ -390,7 +391,10 @@ function getOverlayHtml() {
           </svg>
           Anchor
         </div>
-        <div class="status-badge" id="status-badge">Idle</div>
+        <div class="status-group">
+          <div class="autopilot-pill" id="autopilotPill">Autopilot: Learning</div>
+          <div class="status-badge" id="status-badge">Idle</div>
+        </div>
       </header>
 
       <div class="tabs">
@@ -578,6 +582,45 @@ function log(message, type = 'info') {
   container.prepend(entry);
 }
 
+function updateAutopilotIndicator() {
+  if (!shadowRoot) return;
+  const pill = shadowRoot.getElementById('autopilotPill');
+  if (!pill) return;
+  const ready = Boolean(autopilotStatus.ready);
+  pill.textContent = ready ? 'Autopilot: Ready' : 'Autopilot: Learning';
+  pill.classList.toggle('ready', ready);
+}
+
+async function checkAutopilotStatus(doctorId) {
+  try {
+    const res = await withTimeout(
+      fetch(`http://localhost:8787/autopilot/${encodeURIComponent(doctorId)}`),
+      1500
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data?.ok) {
+      autopilotStatus = {
+        ready: !!data.autopilotReady,
+        coverage: data.coverage || 0,
+        events: data.events || 0,
+        uniqueSurfaces: data.uniqueSurfaces || 0
+      };
+      updateAutopilotIndicator();
+      if (autopilotStatus.ready && !lastAutopilotReady) {
+        log('Autopilot ready for this clinician. Voice commands can run hands-free.', 'success');
+      } else if (!autopilotStatus.ready && lastAutopilotReady) {
+        log('Autopilot paused (workflow changed). Monitoring again.', 'warning');
+      }
+      lastAutopilotReady = autopilotStatus.ready;
+    }
+  } catch (err) {
+    autopilotStatus.ready = false;
+    updateAutopilotIndicator();
+    lastAutopilotReady = false;
+  }
+}
+
 function escapeHtml(s) {
   return s.replace(/[&<>'"]/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
@@ -723,7 +766,7 @@ function stopDictationUI() {
 // --- API Exposure ---
 
 function attachApi() {
-  const doctorId = window.__ANCHOR_DOCTOR_ID__ || localStorage.getItem('ANCHOR_DOCTOR_ID') || 'local-clinician'
+  const doctorId = window.__ANCHOR_DOCTOR_ID__ || localStorage.getItem('ANCHOR_DOCTOR_ID') || 'local-clinician';
   const api = {
     togglePanel,
     map: async () => {
@@ -732,18 +775,19 @@ function attachApi() {
 
       // Send to Agent
       try {
-          const payload = {
-              url: window.location.href,
-              doctorId,
-              ...mapResult
-          };
-          console.log('Sending to Agent:', JSON.stringify(payload));
-          await withTimeout(fetch('http://localhost:8787/dom', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-          }), 1500);
-          log('Sent map to Agent', 'info');
+        const payload = {
+          url: window.location.href,
+          doctorId,
+          ...mapResult
+        };
+        console.log('Sending to Agent:', JSON.stringify(payload));
+        await withTimeout(fetch('http://localhost:8787/dom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }), 1500);
+        log('Sent map to Agent', 'info');
+        checkAutopilotStatus(doctorId);
       } catch (e) {
         log(`Agent offline (using local mode): ${e?.message || e}`, 'warning');
       }
@@ -759,12 +803,12 @@ function attachApi() {
         const res = await withTimeout(fetch('http://localhost:8787/actions/fill', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              url: window.location.href,
-              doctorId,
-              fields: lastMapped
-            })
-          }), 2000);
+          body: JSON.stringify({
+            url: window.location.href,
+            doctorId,
+            fields: lastMapped
+          })
+        }), 2000);
 
         if (!res.ok) throw new Error(`Agent error: ${res.status}`);
 
@@ -880,4 +924,5 @@ function attachApi() {
 
   window.Anchor = api;
   window.__ANCHOR_GHOST__ = api;
+  checkAutopilotStatus(doctorId);
 }
