@@ -39,6 +39,23 @@ Anchor Browser is an experimental Chrome Manifest V3 extension plus a local agen
 - `npm run smoke` – Rebuild the extension, drive Chrome via CDP to load `ehr.html`, click Ghost → Map → Send Map → Fill (Demo), verify demo fields received the deterministic values, and print a `SMOKE PASS` JSON summary.
 - Optional: `./tmux-monitor.sh` can keep Chrome/agent/demo panes visible for longer sessions, but it is not required for everyday development.
 
+### Voice / AI Concierge Control
+
+Clinicians should be able to speak their intent (“populate the SOAP note with
+yesterday’s vitals”, “open referral popup and send it”) and let the Anchor
+concierge handle it. The canonical flow:
+
+1. Local speech-to-text transcribes the command on the workstation (no audio
+   leaves the box).
+2. The transcript is passed into the existing MCP tools (`anchor_map_page`,
+   `anchor_plan_fill`, custom task macros). From the agent’s perspective it is
+   just another text instruction.
+3. Map → Plan → Execute runs with the same guardrails (Ferrari runbook retries,
+   deterministic fallbacks, undo).
+
+This makes voice control a first-class surface without changing the automation
+core or exposing PHI to remote services.
+
 ## Current Status / Phase
 - Ghost Spine (extension + agent + demo) is implemented and passing `npm run smoke`.
 - Toolbar popup controls exist but are still being expanded; document only the behaviors already present in the repo.

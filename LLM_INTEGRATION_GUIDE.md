@@ -153,6 +153,20 @@ Page Context → OpenAI GPT-4o-mini → "Sarah Connor"
 
 ---
 
+## Voice Concierge Entry Point
+
+1. **Local speech capture** – A desktop mic feeds a local speech-to-text helper
+   (no audio leaves the workstation).
+2. **Transcript → MCP tools** – The text command is routed through the existing
+   MCP tools (`anchor_map_page`, `anchor_plan_fill`, `anchor_execute_fill`,
+   custom macros).
+3. **Execution** – Map → Plan → Execute runs with Ferrari guardrails (timeouts,
+   retries, undo, telemetry). From the agent’s perspective, voice is just
+   another text instruction, so PHI stays local while the doctor gets
+   “concierge” control.
+
+---
+
 ## Troubleshooting
 
 ### "OpenAI API key not configured"

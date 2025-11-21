@@ -42,3 +42,22 @@ this Chrome instance running.
 
 Logs: `/tmp/chrome-mcp-browser.log`. Set `MCP_PROFILE_DIR`, `MCP_DEBUG_PORT`, or
 `MCP_BROWSER_LOG` before running `word` if you need custom paths.
+
+## AI Concierge / Voice Control
+
+Anchor is designed so clinicians can speak intent (“paste yesterday’s vitals
+into the note”, “open the referral popup and fill it”) and let the AI execute
+that workflow locally. The secure flow is:
+
+1. **Local speech capture** – a desktop mic feeds a local speech-to-text helper
+   (no audio ever leaves the machine).
+2. **Command transcription** – the transcript is sent to the existing MCP tools
+   (`anchor_map_page`, `anchor_plan_fill`, `anchor_execute_fill`, plus any
+   custom task macros).
+3. **Execution** – the same Map → Plan → Execute pipeline runs, logging every
+   action, honoring undo, and respecting the Ferrari/Moses guardrails.
+
+Because the transcription happens locally and only text hits the MCP toolchain,
+PHI stays on-box while doctors get full “concierge” control over their EMR.
+Voice is just another input surface—the JSON tools remain the single control
+plane for automation.
