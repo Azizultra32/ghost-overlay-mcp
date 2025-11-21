@@ -3,7 +3,11 @@
  * @returns {Promise<import('./anchorApi').MappedField[]>}
  */
 export async function mapDom() {
-    const candidates = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]), textarea, select, [contenteditable="true"]'));
+    const candidates = Array.from(
+        document.querySelectorAll(
+            'input:not([type="hidden"]):not([type="submit"]), textarea, select, [contenteditable="true"]'
+        )
+    );
     const mapped = [];
     const seenSelectors = new Set();
 
@@ -31,10 +35,29 @@ export async function mapDom() {
     const context = document.body.innerText; // Capture visible text
     const title = document.title;
 
+    const headings = collectText('h1, h2, h3', 5);
+    const breadcrumbs = collectBreadcrumbs(5);
+    const tabs = collectTabs(8);
+    const activeTab = tabs.find((t) => t.active)?.label || null;
+    const buttons = collectText('button, .btn', 6);
+    const popups = collectPopups(4);
+
+    const ux = {
+        capturedAt: new Date().toISOString(),
+        headings,
+        breadcrumbs,
+        tabs,
+        activeTab,
+        buttons,
+        popups,
+        surfaceId: buildSurfaceId({ headings, activeTab, url: window.location.href })
+    };
+
     return {
         fields: mapped,
         title,
-        context
+        context,
+        ux
     };
 }
 
@@ -130,6 +153,80 @@ function isVisible(el) {
 
 function cleanText(text) {
     return text ? text.replace(/[:*]/g, '').trim() : '';
+}
+
+function collectText(selector, limit = 5) {
+    const nodes = Array.from(document.querySelectorAll(selector)).filter(isVisible);
+    const items = [];
+    for (const node of nodes) {
+        const text = cleanText(node.innerText || node.textContent || '');
+        if (text) items.push(text);
+        if (items.length >= limit) break;
+    }
+    return items;
+}
+
+function collectBreadcrumbs(limit = 5) {
+    const containers = Array.from(
+        document.querySelectorAll('nav[aria-label="breadcrumb"], .breadcrumb')
+    );
+    for (const container of containers) {
+        const parts = Array.from(container.querySelectorAll('li, a, span'))
+            .map((el) => cleanText(el.textContent || ''))
+            .filter(Boolean);
+        if (parts.length) {
+            return parts.slice(0, limit);
+        }
+    }
+    return [];
+}
+
+function collectTabs(limit = 8) {
+    const tabCandidates = Array.from(
+        document.querySelectorAll('[role="tab"], .tab, .nav-link, .tabs button')
+    ).filter(isVisible);
+
+    const tabs = [];
+    for (const el of tabCandidates) {
+        const label = cleanText(el.textContent || '');
+        if (!label) continue;
+        const active =
+            el.getAttribute('aria-selected') === 'true' ||
+            el.classList.contains('active') ||
+            el.classList.contains('selected');
+        tabs.push({ label, active });
+        if (tabs.length >= limit) break;
+    }
+    return tabs;
+}
+
+function collectPopups(limit = 4) {
+    const selectors = ['[role="dialog"]', '.modal', '.popup', '.ant-modal', '.chakra-modal__content'];
+    const popups = [];
+    for (const selector of selectors) {
+        const nodes = Array.from(document.querySelectorAll(selector)).filter(isVisible);
+        for (const node of nodes) {
+            const title =
+                node.getAttribute('aria-label') ||
+                cleanText(node.querySelector('h1, h2, h3, header')?.textContent || '');
+            if (title) {
+                popups.push(title);
+            }
+            if (popups.length >= limit) break;
+        }
+        if (popups.length >= limit) break;
+    }
+    return popups;
+}
+
+function buildSurfaceId({ headings, activeTab, url }) {
+    const base = [url, activeTab || '', ...(headings || [])].join('|');
+    let hash = 0;
+    for (let i = 0; i < base.length; i++) {
+        hash = (hash << 5) - hash + base.charCodeAt(i);
+        hash |= 0;
+    }
+    return `surface_${Math.abs(hash)}`;
 }
 
 function getUniqueSelector(el) {

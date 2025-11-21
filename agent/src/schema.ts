@@ -12,6 +12,7 @@ export interface DomMap {
   capturedAt: string
   fields: FieldDescriptor[]
   context?: string // The visible text of the page
+  ux?: UxSnapshot
 }
 
 export type FillActionType =
@@ -92,6 +93,42 @@ export function normalizeDomMap(body: any): DomMap {
     title: body.title || '',
     context: body.context || '',
     capturedAt: new Date().toISOString(),
-    fields
+    fields,
+    ux: normalizeUxSnapshot(body.ux)
+  }
+}
+
+export interface UxSnapshot {
+  capturedAt: string
+  headings: string[]
+  breadcrumbs: string[]
+  buttons: string[]
+  tabs: { label: string; active: boolean }[]
+  activeTab: string | null
+  popups: string[]
+  surfaceId?: string
+}
+
+function normalizeUxSnapshot(value: any): UxSnapshot | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const toArray = (v: any) => (Array.isArray(v) ? v.map((item) => String(item).trim()).filter(Boolean) : [])
+  const tabs: { label: string; active: boolean }[] = Array.isArray(value.tabs)
+    ? value.tabs
+        .map((tab: any) => ({
+          label: typeof tab?.label === 'string' ? tab.label : '',
+          active: !!tab?.active
+        }))
+        .filter((tab: { label: string }) => tab.label.length > 0)
+    : []
+
+  return {
+    capturedAt: value.capturedAt || new Date().toISOString(),
+    headings: toArray(value.headings).slice(0, 10),
+    breadcrumbs: toArray(value.breadcrumbs).slice(0, 10),
+    buttons: toArray(value.buttons).slice(0, 10),
+    tabs: tabs.slice(0, 10),
+    activeTab: typeof value.activeTab === 'string' ? value.activeTab : null,
+    popups: toArray(value.popups).slice(0, 10),
+    surfaceId: typeof value.surfaceId === 'string' ? value.surfaceId : undefined
   }
 }

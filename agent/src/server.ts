@@ -20,6 +20,18 @@ app.use(express.json({ limit: '2mb' }))
 let latestDomMap: DomMap | null = null
 let lastPlanIdCounter = 0
 const storedPlans = new Map<string, FillPlan>()
+interface SurfaceTelemetry {
+  url: string
+  title: string
+  capturedAt: string
+  surfaceId?: string
+  activeTab?: string | null
+  headings: string[]
+  tabCount: number
+  popupCount: number
+}
+
+const telemetryLog: SurfaceTelemetry[] = []
 
 function nextPlanId(): string {
   lastPlanIdCounter += 1
@@ -212,10 +224,18 @@ app.get('/dom', (_req: Request, res: Response) => {
   res.json(latestDomMap)
 })
 
+app.get('/telemetry', (_req: Request, res: Response) => {
+  res.json({
+    ok: true,
+    samples: telemetryLog
+  })
+})
+
 app.post('/dom', (req: Request, res: Response) => {
   try {
     const domMap = normalizeDomMap(req.body)
     latestDomMap = domMap
+    recordTelemetry(domMap)
     res.json({
       ok: true,
       fields: domMap.fields.length,
@@ -334,6 +354,24 @@ app.post('/actions/execute', (req: Request, res: Response) => {
 
   res.status(501).json(result)
 })
+
+function recordTelemetry(domMap: DomMap) {
+  if (!domMap.ux) return
+  const entry: SurfaceTelemetry = {
+    url: domMap.url,
+    title: domMap.title || '',
+    capturedAt: domMap.capturedAt,
+    surfaceId: domMap.ux.surfaceId,
+    activeTab: domMap.ux.activeTab,
+    headings: domMap.ux.headings || [],
+    tabCount: domMap.ux.tabs?.length || 0,
+    popupCount: domMap.ux.popups?.length || 0
+  }
+  telemetryLog.push(entry)
+  if (telemetryLog.length > 100) {
+    telemetryLog.shift()
+  }
+}
 
 app.listen(PORT, () => {
   console.log(`Anchor agent listening on http://localhost:${PORT}`)
