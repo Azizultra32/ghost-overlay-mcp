@@ -12,6 +12,7 @@ export interface DomMap {
   capturedAt: string
   fields: FieldDescriptor[]
   context?: string // The visible text of the page
+  doctorId?: string
   ux?: UxSnapshot
 }
 

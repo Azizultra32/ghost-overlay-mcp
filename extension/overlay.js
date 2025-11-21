@@ -723,6 +723,7 @@ function stopDictationUI() {
 // --- API Exposure ---
 
 function attachApi() {
+  const doctorId = window.__ANCHOR_DOCTOR_ID__ || localStorage.getItem('ANCHOR_DOCTOR_ID') || 'local-clinician'
   const api = {
     togglePanel,
     map: async () => {
@@ -733,6 +734,7 @@ function attachApi() {
       try {
           const payload = {
               url: window.location.href,
+              doctorId,
               ...mapResult
           };
           console.log('Sending to Agent:', JSON.stringify(payload));
@@ -757,11 +759,12 @@ function attachApi() {
         const res = await withTimeout(fetch('http://localhost:8787/actions/fill', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: window.location.href,
-            fields: lastMapped
-          })
-        }), 2000);
+            body: JSON.stringify({
+              url: window.location.href,
+              doctorId,
+              fields: lastMapped
+            })
+          }), 2000);
 
         if (!res.ok) throw new Error(`Agent error: ${res.status}`);
 

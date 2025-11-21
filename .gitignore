@@ -4,3 +4,4 @@ node_modules/
 .DS_Store
 extensions-page*.png
 extension/dist/
+agent/telemetry-data/

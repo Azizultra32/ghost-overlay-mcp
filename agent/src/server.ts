@@ -1,6 +1,8 @@
 import 'dotenv/config'
 import express, { Request, Response } from 'express'
 import cors from 'cors'
+import { promises as fs } from 'fs'
+import path from 'path'
 import {
   DomMap,
   FieldDescriptor,
@@ -13,6 +15,13 @@ import { generateSOAPNote, checkLLMHealth } from './llm'
 
 const app = express()
 const PORT = process.env.PORT || 8787
+const DATA_DIR = process.env.TELEMETRY_DIR || path.resolve(process.cwd(), 'telemetry-data')
+const PROFILE_DIR = path.join(DATA_DIR, 'doctor-profiles')
+const TELEMETRY_HISTORY_LIMIT = parseInt(process.env.TELEMETRY_HISTORY_LIMIT || '100')
+const MIN_EVENTS = parseInt(process.env.TELEMETRY_MIN_EVENTS || '30')
+const MIN_SURFACES = parseInt(process.env.TELEMETRY_MIN_SURFACES || '5')
+const COVERAGE_THRESHOLD = parseFloat(process.env.TELEMETRY_COVERAGE_THRESHOLD || '0.9')
+const MIN_REPEATS = parseInt(process.env.TELEMETRY_MIN_REPEATS || '3')
 
 app.use(cors())
 app.use(express.json({ limit: '2mb' }))
@@ -29,9 +38,21 @@ interface SurfaceTelemetry {
   headings: string[]
   tabCount: number
   popupCount: number
+  doctorId: string
+}
+
+interface DoctorProfile {
+  doctorId: string
+  events: number
+  surfaces: Record<string, number>
+  lastSeen: string
+  coverage: number
+  autopilotReady: boolean
+  lastSamples: SurfaceTelemetry[]
 }
 
 const telemetryLog: SurfaceTelemetry[] = []
+const profileCache = new Map<string, DoctorProfile>()
 
 function nextPlanId(): string {
   lastPlanIdCounter += 1
@@ -231,11 +252,40 @@ app.get('/telemetry', (_req: Request, res: Response) => {
   })
 })
 
+app.get('/telemetry/:doctorId', async (req: Request, res: Response) => {
+  try {
+    const doctorId = req.params.doctorId || 'local-clinician'
+    const profile = await loadProfile(doctorId)
+    res.json({ ok: true, profile })
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || 'Unable to load profile' })
+  }
+})
+
+app.get('/autopilot/:doctorId', async (req: Request, res: Response) => {
+  try {
+    const doctorId = req.params.doctorId || 'local-clinician'
+    const profile = await loadProfile(doctorId)
+    res.json({
+      ok: true,
+      doctorId,
+      autopilotReady: profile.autopilotReady,
+      coverage: profile.coverage,
+      events: profile.events,
+      uniqueSurfaces: Object.keys(profile.surfaces).length
+    })
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || 'Unable to compute readiness' })
+  }
+})
+
 app.post('/dom', (req: Request, res: Response) => {
   try {
     const domMap = normalizeDomMap(req.body)
     latestDomMap = domMap
-    recordTelemetry(domMap)
+    recordTelemetry(domMap).catch((err) =>
+      console.error('Telemetry write failed:', err?.message || err)
+    )
     res.json({
       ok: true,
       fields: domMap.fields.length,
@@ -355,8 +405,9 @@ app.post('/actions/execute', (req: Request, res: Response) => {
   res.status(501).json(result)
 })
 
-function recordTelemetry(domMap: DomMap) {
+async function recordTelemetry(domMap: DomMap) {
   if (!domMap.ux) return
+  const doctorId = domMap.doctorId || 'local-clinician'
   const entry: SurfaceTelemetry = {
     url: domMap.url,
     title: domMap.title || '',
@@ -365,12 +416,73 @@ function recordTelemetry(domMap: DomMap) {
     activeTab: domMap.ux.activeTab,
     headings: domMap.ux.headings || [],
     tabCount: domMap.ux.tabs?.length || 0,
-    popupCount: domMap.ux.popups?.length || 0
+    popupCount: domMap.ux.popups?.length || 0,
+    doctorId
   }
   telemetryLog.push(entry)
-  if (telemetryLog.length > 100) {
+  if (telemetryLog.length > TELEMETRY_HISTORY_LIMIT) {
     telemetryLog.shift()
   }
+
+  const profile = await loadProfile(doctorId)
+  updateProfileWithEntry(profile, entry)
+  await saveProfile(profile)
+}
+
+async function loadProfile(doctorId: string): Promise<DoctorProfile> {
+  if (profileCache.has(doctorId)) return profileCache.get(doctorId)!
+  await ensureDir(PROFILE_DIR)
+  const file = path.join(PROFILE_DIR, `${doctorId}.json`)
+  try {
+    const raw = await fs.readFile(file, 'utf8')
+    const parsed = JSON.parse(raw) as DoctorProfile
+    profileCache.set(doctorId, parsed)
+    return parsed
+  } catch {
+    const fresh: DoctorProfile = {
+      doctorId,
+      events: 0,
+      surfaces: {},
+      lastSeen: '',
+      coverage: 0,
+      autopilotReady: false,
+      lastSamples: []
+    }
+    profileCache.set(doctorId, fresh)
+    return fresh
+  }
+}
+
+async function saveProfile(profile: DoctorProfile) {
+  await ensureDir(PROFILE_DIR)
+  const file = path.join(PROFILE_DIR, `${profile.doctorId}.json`)
+  await fs.writeFile(file, JSON.stringify(profile, null, 2), 'utf8')
+}
+
+function updateProfileWithEntry(profile: DoctorProfile, entry: SurfaceTelemetry) {
+  profile.events += 1
+  profile.lastSeen = entry.capturedAt
+
+  const key = entry.surfaceId || 'unknown'
+  profile.surfaces[key] = (profile.surfaces[key] || 0) + 1
+
+  profile.lastSamples.push(entry)
+  if (profile.lastSamples.length > 20) profile.lastSamples.shift()
+
+  const surfaceCounts = Object.values(profile.surfaces)
+  const repeated = surfaceCounts.filter((count) => count >= MIN_REPEATS)
+  const coverageValue =
+    profile.events > 0 ? repeated.reduce((sum, count) => sum + count, 0) / profile.events : 0
+  profile.coverage = Number(coverageValue.toFixed(3))
+
+  profile.autopilotReady =
+    profile.events >= MIN_EVENTS &&
+    Object.keys(profile.surfaces).length >= MIN_SURFACES &&
+    profile.coverage >= COVERAGE_THRESHOLD
+}
+
+async function ensureDir(dir: string) {
+  await fs.mkdir(dir, { recursive: true })
 }
 
 app.listen(PORT, () => {
