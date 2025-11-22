@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AssistMD Overlay Prototype</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --primary: #5f6dff;
+        --primary-dark: #4a55cc;
+        --glass-bg: rgba(18, 20, 38, 0.75);
+        --border-color: rgba(255, 255, 255, 0.18);
+        --text-main: #f7f8ff;
+        --text-muted: rgba(247, 248, 255, 0.7);
+        --accent: rgba(255, 255, 255, 0.12);
+        --chip-bg: rgba(255, 255, 255, 0.08);
+        --hover-bg: rgba(255, 255, 255, 0.12);
+        --tab-bg: rgba(255, 255, 255, 0.05);
+        --tab-border: rgba(255, 255, 255, 0.2);
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top, #1f2440, #05060c 65%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-main);
+      }
+
+      .overlay {
+        width: 400px;
+        height: 620px;
+        border-radius: 20px;
+        border: 1px solid var(--border-color);
+        background: var(--glass-bg);
+        box-shadow: 0 25px 65px rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(16px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .drag-strip {
+        height: 10px;
+        cursor: grab;
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.25) 50%, rgba(255, 255, 255, 0) 100%);
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+
+      .header button {
+        background: transparent;
+        border: none;
+        color: var(--text-main);
+        font-size: 16px;
+        margin-right: 8px;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 8px;
+      }
+
+      .header button:hover {
+        background: var(--hover-bg);
+      }
+
+      .header .spacer {
+        flex: 1;
+      }
+
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid var(--tab-border);
+        background: var(--tab-bg);
+      }
+
+      .tab {
+        flex: 1;
+        padding: 10px 12px;
+        text-align: center;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        cursor: pointer;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        gap: 4px;
+      }
+
+      .tab.active {
+        color: var(--text-main);
+        border-bottom: 2px solid var(--primary);
+      }
+
+      .tab .chevron {
+        font-size: 11px;
+        opacity: 0.7;
+      }
+
+      .content {
+        flex: 1;
+        padding: 18px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .section {
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 14px;
+        position: relative;
+        background: rgba(0, 0, 0, 0.15);
+      }
+
+      .section-title {
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      .section textarea {
+        width: 100%;
+        min-height: 70px;
+        background: transparent;
+        border: none;
+        color: var(--text-main);
+        font-size: 14px;
+        line-height: 1.5;
+        resize: none;
+        outline: none;
+        font-family: inherit;
+      }
+
+      .hover-bar {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        display: flex;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+
+      .section:hover .hover-bar {
+        opacity: 1;
+      }
+
+      .hover-icon {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        background: var(--chip-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .hover-icon:hover {
+        background: var(--hover-bg);
+      }
+
+      .combined-toggle {
+        margin-top: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text-muted);
+        cursor: pointer;
+      }
+
+      .combined-toggle input {
+        accent-color: var(--primary);
+      }
+
+      .footer {
+        padding: 14px 18px;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        gap: 10px;
+      }
+
+      .btn {
+        flex: 1;
+        border-radius: 12px;
+        border: none;
+        font-size: 14px;
+        padding: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      .btn-primary:hover {
+        background: var(--primary-dark);
+      }
+
+      .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+      }
+
+      .toast {
+        position: absolute;
+        bottom: 12px;
+        right: 16px;
+        background: rgba(15, 210, 143, 0.15);
+        border: 1px solid rgba(15, 210, 143, 0.4);
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 13px;
+        color: #aaf7d8;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .toast span {
+        font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="overlay">
+      <div class="drag-strip" title="Optional drag handle"></div>
+      <div class="header">
+        <button title="Menu">☰</button>
+        AssistMD
+        <div class="spacer"></div>
+        <button title="Minimize">—</button>
+        <button title="Close overlay">✕</button>
+      </div>
+      <div class="tabs">
+        <div class="tab active">
+          SOAP
+          <span class="chevron">▾</span>
+        </div>
+        <div class="tab">Summary</div>
+        <div class="tab">Tasks</div>
+        <div class="tab">
+          Transcript
+          <span class="chevron">▾</span>
+        </div>
+      </div>
+      <div class="content">
+        <div class="section">
+          <div class="section-title">SUBJECTIVE</div>
+          <textarea spellcheck="false">Patient reports intermittent dizziness over past 3 weeks, triggered by standing quickly. No chest pain or shortness of breath.</textarea>
+          <div class="hover-bar">
+            <div class="hover-icon" title="Dictate">🎙️</div>
+            <div class="hover-icon" title="Copy">📋</div>
+            <div class="hover-icon" title="Highlight">✨</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">OBJECTIVE</div>
+          <textarea spellcheck="false">BP 110/68, HR 64, neuro exam non-focal. Dix-Hallpike negative today. Labs pending.</textarea>
+          <div class="hover-bar">
+            <div class="hover-icon" title="Dictate">🎙️</div>
+            <div class="hover-icon" title="Copy">📋</div>
+            <div class="hover-icon" title="Highlight">✨</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">ASSESSMENT</div>
+          <textarea spellcheck="false">Probable orthostatic hypotension vs benign positional vertigo.</textarea>
+          <div class="hover-bar">
+            <div class="hover-icon" title="Dictate">🎙️</div>
+            <div class="hover-icon" title="Copy">📋</div>
+            <div class="hover-icon" title="Highlight">✨</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">PLAN</div>
+          <textarea spellcheck="false">Increase hydration + electrolytes. Teach counterpressure maneuvers. Order CMP and CBC. Reassess in 2 weeks.</textarea>
+          <div class="hover-bar">
+            <div class="hover-icon" title="Dictate">🎙️</div>
+            <div class="hover-icon" title="Copy">📋</div>
+            <div class="hover-icon" title="Highlight">✨</div>
+          </div>
+          <label class="combined-toggle">
+            <input type="checkbox" />
+            Show combined SOAP view (user opt-in only)
+          </label>
+        </div>
+      </div>
+      <div class="footer">
+        <button class="btn btn-outline">Copy SOAP</button>
+        <button class="btn btn-primary">
+          Run Macro ▾
+        </button>
+      </div>
+      <div class="toast">
+        <span>✔</span>
+        Subjective copied
+      </div>
+    </div>
+  </body>
+</html>
